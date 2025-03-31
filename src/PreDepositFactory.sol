@@ -22,20 +22,31 @@ import {IStrategyInterface} from "./interfaces/IStrategyInterface.sol";
 // ---- send to share receiver, only allow specific transfers/withdraw
 // ---- send wherever then whitelist who can withdraw from the module
 contract PreDepositFactory is Governance2Step {
+    /// @notice Event emitted when a new pre-deposit vault is deployed
     event PreDepositDeployed(address indexed asset, address indexed vault);
 
+    /// @notice Address to give the Role Manager position to.
     address public constant YEARN_ROLE_MANAGER =
         address(0xb3bd6B2E61753C311EFbCF0111f75D29706D9a41);
 
+    /// @notice Global v3.0.4 vault factory
     IVaultFactory public constant VAULT_FACTORY =
         IVaultFactory(0x770D0d1Fb036483Ed4AbB6d53c1C88fb277D812F);
 
-    DepositRelayer public immutable DEPOSIT_RELAYER;
-    ShareReceiver public immutable SHARE_RECEIVER;
+    /// @notice The network id for Katana for the LxLy bridge/
     uint32 public immutable TARGET_NETWORK_ID;
 
-    mapping(address => address) public preDepositVault;
+    /// @notice The relayer that will be used to deposit funds into the vaults
+    DepositRelayer public immutable DEPOSIT_RELAYER;
+
+    /// @notice The share receiver that will be used to receive the vault shares
+    ShareReceiver public immutable SHARE_RECEIVER;
+
+    /// @notice Token to stb depositor strategy for any deployed vaults
     mapping(address => address) public stbDepositor;
+
+    /// @notice Token to vault mapping for any deployed vaults
+    mapping(address => address) public preDepositVault;
 
     constructor(
         address _governance,
@@ -51,11 +62,22 @@ contract PreDepositFactory is Governance2Step {
         TARGET_NETWORK_ID = _targetNetworkId;
     }
 
+    /// @notice Deploy and setups a new pre-deposit vault
+    /// @dev Can only be called by the governance
+    /// @param _asset The asset to deploy the vault for
+    /// @param _yearnVault The yearn vault to use as first strategy
+    /// @param _stbVault The stb vault that will be bridged to Katana
+    /// @return _vault The address of the new vault
     function deployPreDeposit(
         address _asset,
         address _yearnVault,
         address _stbVault
     ) external onlyGovernance returns (address _vault) {
+        require(
+            preDepositVault[_asset] == address(0),
+            "Vault already deployed"
+        );
+
         // Deploy new vault
         _vault = VAULT_FACTORY.deploy_new_vault(
             _asset,
