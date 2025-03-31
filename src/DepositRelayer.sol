@@ -109,7 +109,15 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
     /// @notice Deposit tokens into the vault
     /// @dev This is ued by those on the same chain.
     function deposit(address token, uint256 amount) external {
+        require(assetToVault[token] != address(0), "Vault not set");
         ERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         _deposit(token, msg.sender, amount);
+    }
+
+    function rescue(address token) external onlyGovernance {
+        ERC20(token).safeTransfer(
+            msg.sender,
+            ERC20(token).balanceOf(address(this))
+        );
     }
 }

@@ -36,11 +36,11 @@ contract PreDepositFactory is Governance2Step {
     /// @notice The network id for Katana for the LxLy bridge/
     uint32 public immutable TARGET_NETWORK_ID;
 
-    /// @notice The relayer that will be used to deposit funds into the vaults
-    DepositRelayer public immutable DEPOSIT_RELAYER;
-
     /// @notice The share receiver that will be used to receive the vault shares
     ShareReceiver public immutable SHARE_RECEIVER;
+
+    /// @notice The relayer that will be used to deposit funds into the vaults
+    DepositRelayer public immutable DEPOSIT_RELAYER;
 
     /// @notice Token to stb depositor strategy for any deployed vaults
     mapping(address => address) public stbDepositor;
@@ -125,7 +125,8 @@ contract PreDepositFactory is Governance2Step {
             type(uint256).max
         );
 
-        IVault(_vault).set_deposit_limit(type(uint256).max);
+        IVault(_vault).set_deposit_limit_module(address(SHARE_RECEIVER), true);
+        IVault(_vault).set_withdraw_limit_module(address(SHARE_RECEIVER));
 
         IVault(_vault).set_role(address(this), 0);
         IVault(_vault).transfer_role_manager(address(YEARN_ROLE_MANAGER));
