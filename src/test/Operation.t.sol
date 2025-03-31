@@ -2,7 +2,7 @@
 pragma solidity ^0.8.18;
 
 import "forge-std/console2.sol";
-import {Setup, ERC20, IStrategyInterface} from "./utils/Setup.sol";
+import {Setup, ERC20, IStrategyInterface, IVault} from "./utils/Setup.sol";
 
 contract OperationTest is Setup {
     function setUp() public virtual override {
@@ -23,7 +23,7 @@ contract OperationTest is Setup {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         // Deposit into strategy
-        mintAndDepositIntoStrategy(strategy, user, _amount);
+        mintAndDepositIntoVault(IVault(address(strategy)), user, _amount);
 
         assertEq(strategy.totalAssets(), _amount, "!totalAssets");
 
@@ -61,7 +61,7 @@ contract OperationTest is Setup {
         _profitFactor = uint16(bound(uint256(_profitFactor), 10, MAX_BPS));
 
         // Deposit into strategy
-        mintAndDepositIntoStrategy(strategy, user, _amount);
+        mintAndDepositIntoVault(IVault(address(strategy)), user, _amount);
 
         assertEq(strategy.totalAssets(), _amount, "!totalAssets");
 
@@ -102,11 +102,8 @@ contract OperationTest is Setup {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
         _profitFactor = uint16(bound(uint256(_profitFactor), 10, MAX_BPS));
 
-        // Set protocol fee to 0 and perf fee to 10%
-        setFees(0, 1_000);
-
         // Deposit into strategy
-        mintAndDepositIntoStrategy(strategy, user, _amount);
+        mintAndDepositIntoVault(IVault(address(strategy)), user, _amount);
 
         assertEq(strategy.totalAssets(), _amount, "!totalAssets");
 
@@ -151,7 +148,7 @@ contract OperationTest is Setup {
             performanceFeeRecipient
         );
 
-        checkStrategyTotals(strategy, 0, 0, 0);
+        checkVaultTotals(IVault(address(strategy)), 0, 0, 0);
 
         assertGe(
             asset.balanceOf(performanceFeeRecipient),
@@ -167,7 +164,7 @@ contract OperationTest is Setup {
         assertTrue(!trigger);
 
         // Deposit into strategy
-        mintAndDepositIntoStrategy(strategy, user, _amount);
+        mintAndDepositIntoVault(IVault(address(strategy)), user, _amount);
 
         (trigger, ) = strategy.tendTrigger();
         assertTrue(!trigger);
