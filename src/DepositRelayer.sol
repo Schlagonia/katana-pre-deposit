@@ -20,11 +20,6 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
         uint256 indexed amount
     );
 
-    error ZERO_ADDRESS();
-    error InvalidAsset();
-    error InvalidCaller();
-    error InsufficientAmount();
-
     modifier onlyPreDepositFactory() {
         if (msg.sender != PRE_DEPOSIT_FACTORY && msg.sender != governance)
             revert InvalidCaller();
@@ -53,8 +48,9 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
         address _shareReceiver
     ) Governance2Step(_governance) {
         PRE_DEPOSIT_FACTORY = msg.sender;
-        if (_acrossBridge == address(0)) revert ZERO_ADDRESS();
+        require(_acrossBridge != address(0), "ZERO_ADDRESS");
         ACROSS_BRIDGE = _acrossBridge;
+        require(_shareReceiver != address(0), "ZERO_ADDRESS");
         SHARE_RECEIVER = _shareReceiver;
     }
 
@@ -65,7 +61,7 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
         address asset,
         address vault
     ) external onlyPreDepositFactory {
-        if (asset == address(0)) revert ZERO_ADDRESS();
+        require(asset != address(0), "ZERO_ADDRESS");
 
         assetToVault[asset] = vault;
         emit VaultSet(asset, vault);
@@ -78,11 +74,13 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
         address /* relayer */,
         bytes memory message
     ) external {
-        if (msg.sender != ACROSS_BRIDGE) revert InvalidCaller();
+        require(msg.sender == ACROSS_BRIDGE, "Invalid caller");
 
         // Funds should have been transferred to this contract before calling this function
-        if (amount == 0 || ERC20(token).balanceOf(address(this)) < amount)
-            revert InsufficientAmount();
+        require(
+            amount > 0 && ERC20(token).balanceOf(address(this)) >= amount,
+            "Insufficient amount"
+        );
 
         address user = abi.decode(message, (address));
         require(user != address(0), "Invalid user");
@@ -92,7 +90,7 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
 
     function _deposit(address token, address user, uint256 amount) internal {
         address vault = assetToVault[token];
-        if (vault == address(0)) revert InvalidAsset();
+        require(vault != address(0), "Invalid asset");
 
         // Approve vault to spend tokens
         ERC20(token).forceApprove(address(vault), amount);
@@ -110,6 +108,7 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
     /// @dev This is ued by those on the same chain.
     function deposit(address token, uint256 amount) external {
         require(assetToVault[token] != address(0), "Vault not set");
+        require(amount > 0, "Invalid amount");
         ERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         _deposit(token, msg.sender, amount);
     }
