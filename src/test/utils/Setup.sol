@@ -7,8 +7,10 @@ import {ExtendedTest} from "./ExtendedTest.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {STBDepositor} from "../../STBDepositor.sol";
+import {ShareReceiver} from "../../ShareReceiver.sol";
 import {DepositRelayer} from "../../DepositRelayer.sol";
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
+import {IYearnRoleManager} from "../../interfaces/IYearnRoleManager.sol";
 
 import {PreDepositFactory} from "../../PreDepositFactory.sol";
 
@@ -35,6 +37,8 @@ contract Setup is ExtendedTest, IEvents {
     IVaultFactory public constant vaultFactory =
         IVaultFactory(0x770D0d1Fb036483Ed4AbB6d53c1C88fb277D812F);
 
+    ShareReceiver public shareReceiver;
+
     DepositRelayer public depositRelayer;
 
     PreDepositFactory public preDepositFactory;
@@ -49,7 +53,12 @@ contract Setup is ExtendedTest, IEvents {
 
     IVault public yearnVault;
 
+    IYearnRoleManager public yearnRoleManager =
+        IYearnRoleManager(0xb3bd6B2E61753C311EFbCF0111f75D29706D9a41);
+
     uint32 public targetNetworkId = 1;
+
+    address public chad;
 
     mapping(string => address) public tokenAddrs;
     mapping(address => address) public yearnVaults;
@@ -61,8 +70,6 @@ contract Setup is ExtendedTest, IEvents {
     address public performanceFeeRecipient = address(3);
     address public emergencyAdmin = address(5);
 
-    address public roleManager = address(2);
-
     // Address of the real deployed Factory
     address public factory;
 
@@ -71,14 +78,18 @@ contract Setup is ExtendedTest, IEvents {
     uint256 public MAX_BPS = 10_000;
 
     // Fuzz from $0.01 of 1e6 stable coins up to 1 trillion of a 1e18 coin
-    uint256 public maxFuzzAmount = 1e30;
-    uint256 public minFuzzAmount = 10_000;
+    uint256 public maxFuzzAmount = 100_000e6;
+    uint256 public minFuzzAmount = 1_000_000;
 
     // Default profit max unlock time is set for 10 days
     uint256 public profitMaxUnlockTime = 10 days;
 
     function setUp() public virtual {
         _setTokenAddrs();
+
+        // Add to Yearn Role Manager;
+        chad = yearnRoleManager.getDaddy();
+        keeper = yearnRoleManager.getKeeper();
 
         // Set asset
         asset = ERC20(tokenAddrs["USDC"]);
@@ -93,6 +104,7 @@ contract Setup is ExtendedTest, IEvents {
         );
 
         depositRelayer = preDepositFactory.DEPOSIT_RELAYER();
+        shareReceiver = ShareReceiver(depositRelayer.SHARE_RECEIVER());
 
         stbVault = IVault(deployNewVault(address(asset)));
 
@@ -114,6 +126,9 @@ contract Setup is ExtendedTest, IEvents {
         vm.prank(management);
         strategy.acceptManagement();
 
+        vm.prank(chad);
+        yearnRoleManager.addNewVault(address(preDepositVault), 69);
+
         // label all the used addresses for traces
         vm.label(keeper, "keeper");
         vm.label(factory, "factory");
@@ -121,40 +136,23 @@ contract Setup is ExtendedTest, IEvents {
         vm.label(management, "management");
         vm.label(address(strategy), "strategy");
         vm.label(performanceFeeRecipient, "performanceFeeRecipient");
+        vm.label(chad, "chad");
+        vm.label(address(preDepositVault), "preDepositVault");
+        vm.label(address(stbVault), "stbVault");
+        vm.label(address(yearnVault), "yearnVault");
+        vm.label(address(depositRelayer), "depositRelayer");
+        vm.label(address(preDepositFactory), "preDepositFactory");
     }
 
     function deployNewVault(address _asset) public returns (address) {
-        address _vault = vaultFactory.deploy_new_vault(
+        vm.prank(chad);
+        address _vault = yearnRoleManager.newVault(
             _asset,
-            string(abi.encodePacked("Vault", block.timestamp)),
-            "VAULT",
-            roleManager,
-            1 days
+            101,
+            type(uint256).max
         );
-        vm.prank(roleManager);
-        IVault(_vault).set_role(roleManager, Roles.ALL);
+
         return _vault;
-    }
-
-    function depositIntoVault(
-        IVault _vault,
-        address _user,
-        uint256 _amount
-    ) public {
-        vm.prank(_user);
-        asset.approve(address(_vault), _amount);
-
-        vm.prank(_user);
-        _vault.deposit(_amount, _user);
-    }
-
-    function mintAndDepositIntoVault(
-        IVault _vault,
-        address _user,
-        uint256 _amount
-    ) public {
-        airdrop(asset, _user, _amount);
-        depositIntoVault(_vault, _user, _amount);
     }
 
     // For checking the amounts in the strategy

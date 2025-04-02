@@ -120,4 +120,8 @@ interface IPolygonZkEVMBridge {
     function polygonRollupManager() external view returns (address);
 
     function depositCount() external view returns (uint256);
+
+    function getTokenMetadata(
+        address token
+    ) external view returns (bytes memory);
 }

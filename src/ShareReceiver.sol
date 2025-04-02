@@ -4,12 +4,35 @@ pragma solidity ^0.8.23;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import {Governance2Step} from "@periphery/utils/Governance2Step.sol";
+import {DepositRelayer} from "./DepositRelayer.sol";
 
-contract ShareReceiver is Governance2Step {
+// TODO:
+//  Allow certain addresses to withdraw?
+contract ShareReceiver {
     using SafeERC20 for ERC20;
 
-    constructor(address _governance) Governance2Step(_governance) {}
+    modifier onlyGovernance() {
+        require(
+            msg.sender == DepositRelayer(DEPOSIT_RELAYER).governance(),
+            "Invalid caller"
+        );
+        _;
+    }
+
+    modifier onlyDepositRelayer() {
+        require(msg.sender == DEPOSIT_RELAYER, "Invalid caller");
+        _;
+    }
+
+    address public immutable DEPOSIT_RELAYER;
+
+    /// @notice Track deposited amount for each token and user
+    /// @dev Use token instead of vault incase vault is updated
+    mapping(address => mapping(address => uint256)) public deposited;
+
+    constructor() {
+        DEPOSIT_RELAYER = msg.sender;
+    }
 
     function pullShares(address token, uint256 amount) external onlyGovernance {
         ERC20(token).safeTransfer(msg.sender, amount);
@@ -27,11 +50,20 @@ contract ShareReceiver is Governance2Step {
     }
 
     /// @notice This is called by the vault during maxWithdraw checks. It will prevent any withdrawals
+    /// TODO: Call through this contract? OR just tansfer shares if TT and no limit module
     function available_withdraw_limit(
         address,
         uint256,
         address[] memory
     ) external view returns (uint256) {
         return 0;
+    }
+
+    function depositProcessed(
+        address token,
+        address user,
+        uint256 amount
+    ) external onlyDepositRelayer {
+        deposited[token][user] += amount;
     }
 }

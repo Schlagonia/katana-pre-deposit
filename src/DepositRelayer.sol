@@ -8,6 +8,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 import {IVault} from "@yearn-vaults/interfaces/IVault.sol";
 
+import {ShareReceiver} from "./ShareReceiver.sol";
 import {IAccrossMessageReceiver} from "./interfaces/IAccrossMessageReceiver.sol";
 
 contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
@@ -17,12 +18,15 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
     event DepositProcessed(
         address indexed asset,
         address indexed user,
-        uint256 indexed amount
+        uint256 indexed amount,
+        uint256 originChainId
     );
 
     modifier onlyPreDepositFactory() {
-        if (msg.sender != PRE_DEPOSIT_FACTORY && msg.sender != governance)
-            revert InvalidCaller();
+        require(
+            msg.sender == PRE_DEPOSIT_FACTORY || msg.sender == governance,
+            "Invalid caller"
+        );
         _;
     }
 
@@ -38,20 +42,14 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
     /// @notice Track vault for each asset. Should be set by factory.
     mapping(address => address) public assetToVault;
 
-    /// @notice Track deposited amount for each token and user
-    /// @dev Use token instead of vault incase vault is updated
-    mapping(address => mapping(address => uint256)) public deposited;
-
     constructor(
         address _governance,
-        address _acrossBridge,
-        address _shareReceiver
+        address _acrossBridge
     ) Governance2Step(_governance) {
         PRE_DEPOSIT_FACTORY = msg.sender;
         require(_acrossBridge != address(0), "ZERO_ADDRESS");
         ACROSS_BRIDGE = _acrossBridge;
-        require(_shareReceiver != address(0), "ZERO_ADDRESS");
-        SHARE_RECEIVER = _shareReceiver;
+        SHARE_RECEIVER = address(new ShareReceiver());
     }
 
     /// @notice Sets the vault for a specific asset
@@ -82,13 +80,22 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
             "Insufficient amount"
         );
 
-        address user = abi.decode(message, (address));
+        (address user, uint256 originChainId) = abi.decode(
+            message,
+            (address, uint256)
+        );
         require(user != address(0), "Invalid user");
+        require(originChainId != 0, "Invalid chain id");
 
-        _deposit(token, user, amount);
+        _deposit(token, user, amount, originChainId);
     }
 
-    function _deposit(address token, address user, uint256 amount) internal {
+    function _deposit(
+        address token,
+        address user,
+        uint256 amount,
+        uint256 originChainId
+    ) internal {
         address vault = assetToVault[token];
         require(vault != address(0), "Invalid asset");
 
@@ -98,10 +105,9 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
         // Deposit into vault and send shares to recipient
         IVault(vault).deposit(amount, SHARE_RECEIVER);
 
-        // Update deposited amount for tracking
-        deposited[token][user] += amount;
+        ShareReceiver(SHARE_RECEIVER).depositProcessed(token, user, amount);
 
-        emit DepositProcessed(token, user, amount);
+        emit DepositProcessed(token, user, amount, originChainId);
     }
 
     /// @notice Deposit tokens into the vault
@@ -109,8 +115,9 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
     function deposit(address token, uint256 amount) external {
         require(assetToVault[token] != address(0), "Vault not set");
         require(amount > 0, "Invalid amount");
+
         ERC20(token).safeTransferFrom(msg.sender, address(this), amount);
-        _deposit(token, msg.sender, amount);
+        _deposit(token, msg.sender, amount, block.chainid);
     }
 
     function rescue(address token) external onlyGovernance {

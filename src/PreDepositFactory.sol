@@ -16,11 +16,11 @@ import {Governance2Step} from "@periphery/utils/Governance2Step.sol";
 import {IStrategyInterface} from "./interfaces/IStrategyInterface.sol";
 
 // TODO:
-// Deposit and Withdraw limit modules?
-// Withdraw option
-// ---- Keep in relayer, no withdraws (maybe a sweep)
-// ---- send to share receiver, only allow specific transfers/withdraw
-// ---- send wherever then whitelist who can withdraw from the module
+//   Add an accountant to take 100% of yield
+
+/// @title Pre-Deposit Factory
+/// @notice This contract is used to deploy new pre-deposit vaults
+/// @dev Can only be called by the governance
 contract PreDepositFactory is Governance2Step {
     /// @notice Event emitted when a new pre-deposit vault is deployed
     event PreDepositDeployed(address indexed asset, address indexed vault);
@@ -53,12 +53,8 @@ contract PreDepositFactory is Governance2Step {
         address _acrossBridge,
         uint32 _targetNetworkId
     ) Governance2Step(_governance) {
-        SHARE_RECEIVER = new ShareReceiver(_governance);
-        DEPOSIT_RELAYER = new DepositRelayer(
-            _governance,
-            _acrossBridge,
-            address(SHARE_RECEIVER)
-        );
+        DEPOSIT_RELAYER = new DepositRelayer(_governance, _acrossBridge);
+        SHARE_RECEIVER = ShareReceiver(DEPOSIT_RELAYER.SHARE_RECEIVER());
         TARGET_NETWORK_ID = _targetNetworkId;
     }
 

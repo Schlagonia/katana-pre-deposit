@@ -5,192 +5,297 @@ import "forge-std/console2.sol";
 import {Setup, ERC20, IStrategyInterface, IVault} from "./utils/Setup.sol";
 
 contract OperationTest is Setup {
+    event PreDepositDeployed(address indexed asset, address indexed vault);
+    event VaultSet(address indexed asset, address indexed vault);
+    event DepositProcessed(
+        address indexed asset,
+        address indexed user,
+        uint256 indexed amount,
+        uint256 originChainId
+    );
+
     function setUp() public virtual override {
         super.setUp();
-    }
-
-    function test_setupStrategyOK() public {
-        console2.log("address of strategy", address(strategy));
-        assertTrue(address(0) != address(strategy));
-        assertEq(strategy.asset(), address(asset));
-        assertEq(strategy.management(), management);
-        assertEq(strategy.performanceFeeRecipient(), performanceFeeRecipient);
-        assertEq(strategy.keeper(), keeper);
-        // TODO: add additional check on strat params
     }
 
     function test_operation(uint256 _amount) public {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
-        // Deposit into strategy
-        mintAndDepositIntoVault(IVault(address(strategy)), user, _amount);
+        // Deposit into vault
+        airdrop(asset, user, _amount);
 
-        assertEq(strategy.totalAssets(), _amount, "!totalAssets");
+        vm.prank(user);
+        asset.approve(address(depositRelayer), _amount);
+
+        vm.prank(user);
+        depositRelayer.deposit(address(asset), _amount);
+
+        assertEq(preDepositVault.totalAssets(), _amount, "!totalAssets");
+
+        assertEq(preDepositVault.balanceOf(user), 0, "!balance");
+        assertEq(
+            preDepositVault.balanceOf(address(shareReceiver)),
+            _amount,
+            "!depositRelayer balance"
+        );
+
+        vm.prank(chad);
+        preDepositVault.update_debt(address(yearnVault), _amount);
 
         // Earn Interest
         skip(1 days);
 
         // Report profit
         vm.prank(keeper);
-        (uint256 profit, uint256 loss) = strategy.report();
+        (uint256 profit, uint256 loss) = preDepositVault.process_report(
+            address(yearnVault)
+        );
 
         // Check return Values
-        assertGe(profit, 0, "!profit");
+        assertGt(profit, 0, "!profit");
         assertEq(loss, 0, "!loss");
 
-        skip(strategy.profitMaxUnlockTime());
+        skip(preDepositVault.profitMaxUnlockTime());
 
         uint256 balanceBefore = asset.balanceOf(user);
 
-        // Withdraw all funds
-        vm.prank(user);
-        strategy.redeem(_amount, user, user);
-
-        assertGe(
-            asset.balanceOf(user),
-            balanceBefore + _amount,
-            "!final balance"
+        assertEq(preDepositVault.maxWithdraw(user), 0, "!maxWithdraw");
+        assertEq(
+            preDepositVault.maxWithdraw(address(shareReceiver)),
+            0,
+            "!maxWithdraw"
         );
     }
 
-    function test_profitableReport(
-        uint256 _amount,
-        uint16 _profitFactor
-    ) public {
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
-        _profitFactor = uint16(bound(uint256(_profitFactor), 10, MAX_BPS));
+    function test_constructor() public {
+        // Test PreDepositFactory constructor
+        assertEq(preDepositFactory.governance(), management);
+        assertEq(preDepositFactory.TARGET_NETWORK_ID(), targetNetworkId);
+        assertEq(
+            address(preDepositFactory.DEPOSIT_RELAYER()),
+            address(depositRelayer)
+        );
+        assertEq(
+            address(preDepositFactory.SHARE_RECEIVER()),
+            address(depositRelayer.SHARE_RECEIVER())
+        );
 
-        // Deposit into strategy
-        mintAndDepositIntoVault(IVault(address(strategy)), user, _amount);
+        // Test DepositRelayer constructor
+        assertEq(depositRelayer.governance(), management);
+        assertEq(depositRelayer.ACROSS_BRIDGE(), acrossBridge);
+        assertEq(
+            depositRelayer.PRE_DEPOSIT_FACTORY(),
+            address(preDepositFactory)
+        );
 
-        assertEq(strategy.totalAssets(), _amount, "!totalAssets");
+        // Test ShareReceiver constructor
+        assertEq(shareReceiver.DEPOSIT_RELAYER(), address(depositRelayer));
+    }
 
-        // Earn Interest
-        skip(1 days);
+    function test_deployPreDeposit() public {
+        address newAsset = tokenAddrs["DAI"];
+        address newYearnVault = yearnVaults[newAsset];
+        address newStbVault = deployNewVault(newAsset);
 
-        // TODO: implement logic to simulate earning interest.
-        uint256 toAirdrop = (_amount * _profitFactor) / MAX_BPS;
-        airdrop(asset, address(strategy), toAirdrop);
+        vm.startPrank(management);
 
-        // Report profit
-        vm.prank(keeper);
-        (uint256 profit, uint256 loss) = strategy.report();
+        vm.expectEmit(true, false, false, false);
+        emit PreDepositDeployed(newAsset, address(0));
 
-        // Check return Values
-        assertGe(profit, toAirdrop, "!profit");
-        assertEq(loss, 0, "!loss");
+        address newVault = preDepositFactory.deployPreDeposit(
+            newAsset,
+            newYearnVault,
+            newStbVault
+        );
 
-        skip(strategy.profitMaxUnlockTime());
+        assertEq(preDepositFactory.preDepositVault(newAsset), newVault);
+        assertEq(depositRelayer.assetToVault(newAsset), newVault);
 
-        uint256 balanceBefore = asset.balanceOf(user);
+        vm.stopPrank();
+    }
 
-        // Withdraw all funds
+    function test_depositRelayer_setVault() public {
+        address newAsset = tokenAddrs["DAI"];
+        address newVault = deployNewVault(newAsset);
+
+        vm.startPrank(management);
+
+        vm.expectEmit(true, true, false, true);
+        emit VaultSet(newAsset, newVault);
+
+        depositRelayer.setVault(newAsset, newVault);
+        assertEq(depositRelayer.assetToVault(newAsset), newVault);
+
+        vm.stopPrank();
+    }
+
+    function test_depositRelayer_deposit() public {
+        uint256 depositAmount = 1000 * 10 ** decimals;
+
+        // Setup user with tokens
+        airdrop(asset, user, depositAmount);
+
+        vm.startPrank(user);
+        asset.approve(address(depositRelayer), depositAmount);
+
+        vm.expectEmit(true, true, true, true);
+        emit DepositProcessed(
+            address(asset),
+            user,
+            depositAmount,
+            block.chainid
+        );
+
+        depositRelayer.deposit(address(asset), depositAmount);
+
+        // Check deposited amount is tracked
+        assertEq(shareReceiver.deposited(address(asset), user), depositAmount);
+
+        vm.stopPrank();
+    }
+
+    function test_depositRelayer_handleV3AcrossMessage() public {
+        uint256 depositAmount = 1000 * 10 ** decimals;
+        uint256 originChainId = 137; // Example chain ID
+
+        // Setup relayer with tokens
+        airdrop(asset, address(depositRelayer), depositAmount);
+
+        bytes memory message = abi.encode(user, originChainId);
+
+        vm.prank(acrossBridge);
+        vm.expectEmit(true, true, true, true);
+        emit DepositProcessed(
+            address(asset),
+            user,
+            depositAmount,
+            originChainId
+        );
+
+        depositRelayer.handleV3AcrossMessage(
+            address(asset),
+            depositAmount,
+            address(0), // relayer address (unused)
+            message
+        );
+
+        // Check deposited amount is tracked
+        assertEq(shareReceiver.deposited(address(asset), user), depositAmount);
+    }
+
+    function test_shareReceiver_depositLimits() public {
+        // Should allow max deposits to ShareReceiver
+        assertEq(
+            shareReceiver.available_deposit_limit(address(shareReceiver)),
+            type(uint256).max
+        );
+        assertEq(
+            preDepositVault.maxDeposit(address(shareReceiver)),
+            type(uint256).max
+        );
+
+        // Should prevent deposits to other addresses
+        assertEq(shareReceiver.available_deposit_limit(address(this)), 0);
+        assertEq(preDepositVault.maxDeposit(address(this)), 0);
+    }
+
+    function test_shareReceiver_withdrawLimits() public {
+        address[] memory strategies;
+
+        // Should prevent all withdrawals
+        assertEq(
+            shareReceiver.available_withdraw_limit(
+                address(this),
+                100,
+                strategies
+            ),
+            0
+        );
+        assertEq(preDepositVault.maxWithdraw(address(this)), 0);
+    }
+
+    function test_shareReceiver_pullShares() public {
+        uint256 amount = 1000 * 10 ** decimals;
+
+        // Setup ShareReceiver with tokens
+        airdrop(asset, address(shareReceiver), amount);
+
+        // Only governance should be able to pull shares
+        vm.expectRevert("Invalid caller");
+        shareReceiver.pullShares(address(asset), amount);
+
+        uint256 balanceBefore = asset.balanceOf(management);
+
+        vm.prank(management);
+        shareReceiver.pullShares(address(asset), amount);
+
+        assertEq(asset.balanceOf(management), balanceBefore + amount);
+    }
+
+    function test_RevertWhen_NonGovernanceDeploysPreDeposit() public {
         vm.prank(user);
-        strategy.redeem(_amount, user, user);
-
-        assertGe(
-            asset.balanceOf(user),
-            balanceBefore + _amount,
-            "!final balance"
+        vm.expectRevert("!governance");
+        preDepositFactory.deployPreDeposit(
+            address(asset),
+            address(yearnVault),
+            address(stbVault)
         );
     }
 
-    function test_profitableReport_withFees(
-        uint256 _amount,
-        uint16 _profitFactor
-    ) public {
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
-        _profitFactor = uint16(bound(uint256(_profitFactor), 10, MAX_BPS));
-
-        // Deposit into strategy
-        mintAndDepositIntoVault(IVault(address(strategy)), user, _amount);
-
-        assertEq(strategy.totalAssets(), _amount, "!totalAssets");
-
-        // Earn Interest
-        skip(1 days);
-
-        // TODO: implement logic to simulate earning interest.
-        uint256 toAirdrop = (_amount * _profitFactor) / MAX_BPS;
-        airdrop(asset, address(strategy), toAirdrop);
-
-        // Report profit
-        vm.prank(keeper);
-        (uint256 profit, uint256 loss) = strategy.report();
-
-        // Check return Values
-        assertGe(profit, toAirdrop, "!profit");
-        assertEq(loss, 0, "!loss");
-
-        skip(strategy.profitMaxUnlockTime());
-
-        // Get the expected fee
-        uint256 expectedShares = (profit * 1_000) / MAX_BPS;
-
-        assertEq(strategy.balanceOf(performanceFeeRecipient), expectedShares);
-
-        uint256 balanceBefore = asset.balanceOf(user);
-
-        // Withdraw all funds
+    function test_RevertWhen_NonFactorySetVault() public {
         vm.prank(user);
-        strategy.redeem(_amount, user, user);
+        vm.expectRevert("Invalid caller");
+        depositRelayer.setVault(address(asset), address(preDepositVault));
+    }
 
-        assertGe(
-            asset.balanceOf(user),
-            balanceBefore + _amount,
-            "!final balance"
-        );
-
-        vm.prank(performanceFeeRecipient);
-        strategy.redeem(
-            expectedShares,
-            performanceFeeRecipient,
-            performanceFeeRecipient
-        );
-
-        checkVaultTotals(IVault(address(strategy)), 0, 0, 0);
-
-        assertGe(
-            asset.balanceOf(performanceFeeRecipient),
-            expectedShares,
-            "!perf fee out"
+    function test_RevertWhen_NonBridgeHandlesMessage() public {
+        vm.prank(user);
+        vm.expectRevert("Invalid caller");
+        depositRelayer.handleV3AcrossMessage(
+            address(asset),
+            100,
+            address(0),
+            ""
         );
     }
 
-    function test_tendTrigger(uint256 _amount) public {
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
-
-        (bool trigger, ) = strategy.tendTrigger();
-        assertTrue(!trigger);
-
-        // Deposit into strategy
-        mintAndDepositIntoVault(IVault(address(strategy)), user, _amount);
-
-        (trigger, ) = strategy.tendTrigger();
-        assertTrue(!trigger);
-
-        // Skip some time
-        skip(1 days);
-
-        (trigger, ) = strategy.tendTrigger();
-        assertTrue(!trigger);
-
-        vm.prank(keeper);
-        strategy.report();
-
-        (trigger, ) = strategy.tendTrigger();
-        assertTrue(!trigger);
-
-        // Unlock Profits
-        skip(strategy.profitMaxUnlockTime());
-
-        (trigger, ) = strategy.tendTrigger();
-        assertTrue(!trigger);
-
+    function test_RevertWhen_DepositingInvalidAmount() public {
         vm.prank(user);
-        strategy.redeem(_amount, user, user);
+        vm.expectRevert("Invalid amount");
+        depositRelayer.deposit(address(asset), 0);
+    }
 
-        (trigger, ) = strategy.tendTrigger();
-        assertTrue(!trigger);
+    function test_RevertWhen_DepositingInvalidAsset() public {
+        vm.prank(user);
+        vm.expectRevert("Vault not set");
+        depositRelayer.deposit(address(0), 100);
+    }
+
+    function test_depositRelayer_rescue() public {
+        uint256 amount = 1000 * 10 ** decimals;
+        airdrop(asset, address(depositRelayer), amount);
+
+        uint256 balanceBefore = asset.balanceOf(management);
+
+        vm.prank(management);
+        depositRelayer.rescue(address(asset));
+
+        assertEq(asset.balanceOf(management), balanceBefore + amount);
+    }
+
+    function testFuzz_depositRelayer_deposit(uint256 amount) public {
+        // Bound amount between min and max fuzz amounts
+        amount = bound(amount, minFuzzAmount, maxFuzzAmount);
+
+        airdrop(asset, user, amount);
+
+        vm.startPrank(user);
+        asset.approve(address(depositRelayer), amount);
+        depositRelayer.deposit(address(asset), amount);
+
+        assertEq(shareReceiver.deposited(address(asset), user), amount);
+        assertEq(preDepositVault.balanceOf(user), 0);
+        assertEq(preDepositVault.balanceOf(address(shareReceiver)), amount);
+        vm.stopPrank();
     }
 }
