@@ -20,6 +20,8 @@ contract STBDepositor is Base4626Compounder {
 
     address public katanaReceiver;
 
+    bool public bridged;
+
     constructor(
         address _asset,
         string memory _name,
@@ -49,6 +51,11 @@ contract STBDepositor is Base4626Compounder {
             true,
             ""
         );
+
+        if (!bridged) {
+            // Return 0 withdraw limit once funds are bridged
+            bridged = true;
+        }
     }
 
     function setKatanaReceiver(
@@ -65,5 +72,14 @@ contract STBDepositor is Base4626Compounder {
             return super.availableDepositLimit(_receiver);
         }
         return 0;
+    }
+
+    function availableWithdrawLimit(
+        address _owner
+    ) public view override returns (uint256) {
+        if (bridged) {
+            return 0;
+        }
+        return super.availableWithdrawLimit(_owner);
     }
 }

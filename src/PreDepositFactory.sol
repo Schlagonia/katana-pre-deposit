@@ -6,7 +6,6 @@ import {IVault} from "@yearn-vaults/interfaces/IVault.sol";
 
 import {Accountant} from "./Accountant.sol";
 import {STBDepositor} from "./STBDepositor.sol";
-import {ShareReceiver} from "./ShareReceiver.sol";
 import {DepositRelayer} from "./DepositRelayer.sol";
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
@@ -23,22 +22,21 @@ contract PreDepositFactory is Governance2Step {
     /// @notice Event emitted when a new pre-deposit vault is deployed
     event PreDepositDeployed(address indexed asset, address indexed vault);
 
-    /// @notice Address to give the Role Manager position to.
-    address public constant YEARN_ROLE_MANAGER =
-        address(0xb3bd6B2E61753C311EFbCF0111f75D29706D9a41);
+    /// @notice Event emitted when a vault is set for a specific asset
+    event VaultSet(address indexed asset, address indexed vault);
 
     /// @notice Global v3.0.4 vault factory
     IVaultFactory public constant VAULT_FACTORY =
         IVaultFactory(0x770D0d1Fb036483Ed4AbB6d53c1C88fb277D812F);
 
-    /// @notice The network id for Katana for the LxLy bridge/
-    uint32 public immutable TARGET_NETWORK_ID;
+    /// @notice Address to give the Role Manager position to.
+    address public immutable ROLE_MANAGER;
 
     /// @notice The accountant that will be used to take 100% of yield
     Accountant public immutable ACCOUNTANT;
 
-    /// @notice The share receiver that will be used to receive the vault shares
-    ShareReceiver public immutable SHARE_RECEIVER;
+    /// @notice The network id for Katana for the LxLy bridge/
+    uint32 public immutable TARGET_NETWORK_ID;
 
     /// @notice The relayer that will be used to deposit funds into the vaults
     DepositRelayer public immutable DEPOSIT_RELAYER;
@@ -52,12 +50,13 @@ contract PreDepositFactory is Governance2Step {
     constructor(
         address _governance,
         address _acrossBridge,
-        uint32 _targetNetworkId
+        uint32 _targetNetworkId,
+        address _roleManager
     ) Governance2Step(_governance) {
-        DEPOSIT_RELAYER = new DepositRelayer(_governance, _acrossBridge);
-        ACCOUNTANT = Accountant(DEPOSIT_RELAYER.ACCOUNTANT());
-        SHARE_RECEIVER = ShareReceiver(DEPOSIT_RELAYER.SHARE_RECEIVER());
+        DEPOSIT_RELAYER = new DepositRelayer(_acrossBridge);
+        ACCOUNTANT = new Accountant();
         TARGET_NETWORK_ID = _targetNetworkId;
+        ROLE_MANAGER = _roleManager;
     }
 
     /// @notice Deploy and setups a new pre-deposit vault
@@ -125,14 +124,9 @@ contract PreDepositFactory is Governance2Step {
 
         IVault(_vault).set_accountant(address(ACCOUNTANT));
         IVault(_vault).set_deposit_limit(type(uint256).max);
-        // IVault(_vault).set_deposit_limit_module(address(SHARE_RECEIVER), true);
-        // IVault(_vault).set_withdraw_limit_module(address(SHARE_RECEIVER));
 
         IVault(_vault).set_role(address(this), 0);
-        IVault(_vault).transfer_role_manager(address(YEARN_ROLE_MANAGER));
-
-        // Add vault to relayer
-        DEPOSIT_RELAYER.setVault(_asset, _vault);
+        IVault(_vault).transfer_role_manager(ROLE_MANAGER);
 
         preDepositVault[_asset] = _vault;
         stbDepositor[_asset] = address(_stbDepositor);
@@ -140,5 +134,16 @@ contract PreDepositFactory is Governance2Step {
         emit PreDepositDeployed(_asset, _vault);
 
         return _vault;
+    }
+
+    /// @notice Sets the vault for a specific asset
+    /// @dev Can only be called by the governance to override the vault
+    /// @param asset The token address
+    /// @param vault The corresponding Pre-Deposit vault address
+    function setVault(address asset, address vault) external onlyGovernance {
+        require(asset != address(0), "ZERO_ADDRESS");
+
+        preDepositVault[asset] = vault;
+        emit VaultSet(asset, vault);
     }
 }

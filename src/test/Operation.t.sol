@@ -57,7 +57,7 @@ contract OperationTest is Setup {
 
         // Make sure accountant takes 100% of profit
         assertGt(
-            preDepositVault.balanceOf(address(depositRelayer.ACCOUNTANT())),
+            preDepositVault.balanceOf(address(preDepositFactory.ACCOUNTANT())),
             0,
             "!accountant balance"
         );
@@ -83,13 +83,8 @@ contract OperationTest is Setup {
             address(preDepositFactory.DEPOSIT_RELAYER()),
             address(depositRelayer)
         );
-        assertEq(
-            address(preDepositFactory.SHARE_RECEIVER()),
-            address(depositRelayer.SHARE_RECEIVER())
-        );
 
         // Test DepositRelayer constructor
-        assertEq(depositRelayer.governance(), management);
         assertEq(depositRelayer.ACROSS_BRIDGE(), acrossBridge);
         assertEq(
             depositRelayer.PRE_DEPOSIT_FACTORY(),
@@ -117,12 +112,11 @@ contract OperationTest is Setup {
         );
 
         assertEq(preDepositFactory.preDepositVault(newAsset), newVault);
-        assertEq(depositRelayer.assetToVault(newAsset), newVault);
 
         vm.stopPrank();
     }
 
-    function test_depositRelayer_setVault() public {
+    function test_preDepositFactory_setVault() public {
         address newAsset = tokenAddrs["DAI"];
         address newVault = deployNewVault(newAsset);
 
@@ -131,8 +125,8 @@ contract OperationTest is Setup {
         vm.expectEmit(true, true, false, true);
         emit VaultSet(newAsset, newVault);
 
-        depositRelayer.setVault(newAsset, newVault);
-        assertEq(depositRelayer.assetToVault(newAsset), newVault);
+        preDepositFactory.setVault(newAsset, newVault);
+        assertEq(preDepositFactory.preDepositVault(newAsset), newVault);
 
         vm.stopPrank();
     }
@@ -190,38 +184,6 @@ contract OperationTest is Setup {
         // Check deposited amount is tracked
         assertEq(shareReceiver.deposited(address(asset), user), depositAmount);
     }
-    /**
-    function test_shareReceiver_depositLimits() public {
-        // Should allow max deposits to ShareReceiver
-        assertEq(
-            shareReceiver.available_deposit_limit(address(shareReceiver)),
-            type(uint256).max
-        );
-        assertEq(
-            preDepositVault.maxDeposit(address(shareReceiver)),
-            type(uint256).max
-        );
-
-        // Should prevent deposits to other addresses
-        assertEq(shareReceiver.available_deposit_limit(address(this)), 0);
-        assertEq(preDepositVault.maxDeposit(address(this)), 0);
-    }
-
-    function test_shareReceiver_withdrawLimits() public {
-        address[] memory strategies;
-
-        // Should prevent all withdrawals
-        assertEq(
-            shareReceiver.available_withdraw_limit(
-                address(this),
-                100,
-                strategies
-            ),
-            0
-        );
-        assertEq(preDepositVault.maxWithdraw(address(this)), 0);
-    }
-    */
 
     function test_shareReceiver_pullShares() public {
         uint256 amount = 1000 * 10 ** decimals;
@@ -253,8 +215,8 @@ contract OperationTest is Setup {
 
     function test_RevertWhen_NonFactorySetVault() public {
         vm.prank(user);
-        vm.expectRevert("Invalid caller");
-        depositRelayer.setVault(address(asset), address(preDepositVault));
+        vm.expectRevert("!governance");
+        preDepositFactory.setVault(address(asset), address(preDepositVault));
     }
 
     function test_RevertWhen_NonBridgeHandlesMessage() public {

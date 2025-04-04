@@ -100,7 +100,8 @@ contract Setup is ExtendedTest, IEvents {
         preDepositFactory = new PreDepositFactory(
             management,
             acrossBridge,
-            targetNetworkId
+            targetNetworkId,
+            address(yearnRoleManager)
         );
 
         depositRelayer = preDepositFactory.DEPOSIT_RELAYER();
