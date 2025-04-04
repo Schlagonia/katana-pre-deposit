@@ -55,16 +55,24 @@ contract OperationTest is Setup {
         assertGt(profit, 0, "!profit");
         assertEq(loss, 0, "!loss");
 
+        // Make sure accountant takes 100% of profit
+        assertGt(
+            preDepositVault.balanceOf(address(depositRelayer.ACCOUNTANT())),
+            0,
+            "!accountant balance"
+        );
+
         skip(preDepositVault.profitMaxUnlockTime());
+
+        assertEq(
+            preDepositVault.pricePerShare(),
+            10 ** decimals,
+            "!pricePerShare"
+        );
 
         uint256 balanceBefore = asset.balanceOf(user);
 
         assertEq(preDepositVault.maxWithdraw(user), 0, "!maxWithdraw");
-        assertEq(
-            preDepositVault.maxWithdraw(address(shareReceiver)),
-            0,
-            "!maxWithdraw"
-        );
     }
 
     function test_constructor() public {
@@ -182,7 +190,7 @@ contract OperationTest is Setup {
         // Check deposited amount is tracked
         assertEq(shareReceiver.deposited(address(asset), user), depositAmount);
     }
-
+    /**
     function test_shareReceiver_depositLimits() public {
         // Should allow max deposits to ShareReceiver
         assertEq(
@@ -213,6 +221,7 @@ contract OperationTest is Setup {
         );
         assertEq(preDepositVault.maxWithdraw(address(this)), 0);
     }
+    */
 
     function test_shareReceiver_pullShares() public {
         uint256 amount = 1000 * 10 ** decimals;
@@ -221,7 +230,7 @@ contract OperationTest is Setup {
         airdrop(asset, address(shareReceiver), amount);
 
         // Only governance should be able to pull shares
-        vm.expectRevert("Invalid caller");
+        vm.expectRevert("!governance");
         shareReceiver.pullShares(address(asset), amount);
 
         uint256 balanceBefore = asset.balanceOf(management);

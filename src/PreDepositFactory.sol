@@ -4,6 +4,7 @@ pragma solidity ^0.8.23;
 import {IVaultFactory} from "@yearn-vaults/interfaces/IVaultFactory.sol";
 import {IVault} from "@yearn-vaults/interfaces/IVault.sol";
 
+import {Accountant} from "./Accountant.sol";
 import {STBDepositor} from "./STBDepositor.sol";
 import {ShareReceiver} from "./ShareReceiver.sol";
 import {DepositRelayer} from "./DepositRelayer.sol";
@@ -14,9 +15,6 @@ import {Roles} from "@yearn-vaults/interfaces/Roles.sol";
 import {Governance2Step} from "@periphery/utils/Governance2Step.sol";
 
 import {IStrategyInterface} from "./interfaces/IStrategyInterface.sol";
-
-// TODO:
-//   Add an accountant to take 100% of yield
 
 /// @title Pre-Deposit Factory
 /// @notice This contract is used to deploy new pre-deposit vaults
@@ -36,6 +34,9 @@ contract PreDepositFactory is Governance2Step {
     /// @notice The network id for Katana for the LxLy bridge/
     uint32 public immutable TARGET_NETWORK_ID;
 
+    /// @notice The accountant that will be used to take 100% of yield
+    Accountant public immutable ACCOUNTANT;
+
     /// @notice The share receiver that will be used to receive the vault shares
     ShareReceiver public immutable SHARE_RECEIVER;
 
@@ -54,6 +55,7 @@ contract PreDepositFactory is Governance2Step {
         uint32 _targetNetworkId
     ) Governance2Step(_governance) {
         DEPOSIT_RELAYER = new DepositRelayer(_governance, _acrossBridge);
+        ACCOUNTANT = Accountant(DEPOSIT_RELAYER.ACCOUNTANT());
         SHARE_RECEIVER = ShareReceiver(DEPOSIT_RELAYER.SHARE_RECEIVER());
         TARGET_NETWORK_ID = _targetNetworkId;
     }
@@ -121,8 +123,10 @@ contract PreDepositFactory is Governance2Step {
             type(uint256).max
         );
 
-        IVault(_vault).set_deposit_limit_module(address(SHARE_RECEIVER), true);
-        IVault(_vault).set_withdraw_limit_module(address(SHARE_RECEIVER));
+        IVault(_vault).set_accountant(address(ACCOUNTANT));
+        IVault(_vault).set_deposit_limit(type(uint256).max);
+        // IVault(_vault).set_deposit_limit_module(address(SHARE_RECEIVER), true);
+        // IVault(_vault).set_withdraw_limit_module(address(SHARE_RECEIVER));
 
         IVault(_vault).set_role(address(this), 0);
         IVault(_vault).transfer_role_manager(address(YEARN_ROLE_MANAGER));

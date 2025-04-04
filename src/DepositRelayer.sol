@@ -8,6 +8,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 import {IVault} from "@yearn-vaults/interfaces/IVault.sol";
 
+import {Accountant} from "./Accountant.sol";
 import {ShareReceiver} from "./ShareReceiver.sol";
 import {IAccrossMessageReceiver} from "./interfaces/IAccrossMessageReceiver.sol";
 
@@ -33,6 +34,9 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
     /// @notice Address of the Across bridge
     address public immutable ACROSS_BRIDGE;
 
+    /// @notice Address of the accountant
+    address public immutable ACCOUNTANT;
+
     /// @notice Address to hold the vault shares
     address public immutable SHARE_RECEIVER;
 
@@ -50,6 +54,7 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
         require(_acrossBridge != address(0), "ZERO_ADDRESS");
         ACROSS_BRIDGE = _acrossBridge;
         SHARE_RECEIVER = address(new ShareReceiver());
+        ACCOUNTANT = address(new Accountant());
     }
 
     /// @notice Sets the vault for a specific asset
