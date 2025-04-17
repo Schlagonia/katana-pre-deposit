@@ -7,6 +7,7 @@ import {IVault} from "@yearn-vaults/interfaces/IVault.sol";
 import {Accountant} from "./Accountant.sol";
 import {STBDepositor} from "./STBDepositor.sol";
 import {DepositRelayer} from "./DepositRelayer.sol";
+import {ShareReceiver} from "./ShareReceiver.sol";
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
@@ -18,12 +19,14 @@ import {IStrategyInterface} from "./interfaces/IStrategyInterface.sol";
 /// @title Pre-Deposit Factory
 /// @notice This contract is used to deploy new pre-deposit vaults
 /// @dev Can only be called by the governance
-contract PreDepositFactory is Governance2Step {
+contract PreDepositFactory {
     /// @notice Event emitted when a new pre-deposit vault is deployed
     event PreDepositDeployed(address indexed asset, address indexed vault);
 
-    /// @notice Event emitted when a vault is set for a specific asset
-    event VaultSet(address indexed asset, address indexed vault);
+    modifier onlyGovernance() {
+        require(msg.sender == DEPOSIT_RELAYER.governance(), "!governance");
+        _;
+    }
 
     /// @notice Global v3.0.4 vault factory
     IVaultFactory public constant VAULT_FACTORY =
@@ -41,20 +44,14 @@ contract PreDepositFactory is Governance2Step {
     /// @notice The relayer that will be used to deposit funds into the vaults
     DepositRelayer public immutable DEPOSIT_RELAYER;
 
-    /// @notice Token to stb depositor strategy for any deployed vaults
-    mapping(address => address) public stbDepositor;
-
-    /// @notice Token to vault mapping for any deployed vaults
-    mapping(address => address) public preDepositVault;
-
     constructor(
         address _governance,
         address _acrossBridge,
         uint32 _targetNetworkId,
         address _roleManager
-    ) Governance2Step(_governance) {
-        DEPOSIT_RELAYER = new DepositRelayer(_acrossBridge);
-        ACCOUNTANT = new Accountant();
+    ) {
+        DEPOSIT_RELAYER = new DepositRelayer(_governance, _acrossBridge);
+        ACCOUNTANT = new Accountant(address(DEPOSIT_RELAYER));
         TARGET_NETWORK_ID = _targetNetworkId;
         ROLE_MANAGER = _roleManager;
     }
@@ -71,7 +68,7 @@ contract PreDepositFactory is Governance2Step {
         address _stbVault
     ) external onlyGovernance returns (address _vault) {
         require(
-            preDepositVault[_asset] == address(0),
+            DEPOSIT_RELAYER.preDepositVault(_asset) == address(0),
             "Vault already deployed"
         );
 
@@ -105,7 +102,7 @@ contract PreDepositFactory is Governance2Step {
             )
         );
 
-        _stbDepositor.setPendingManagement(governance);
+        _stbDepositor.setPendingManagement(DEPOSIT_RELAYER.governance());
 
         // Add strategies to vault
         IVault(_vault).set_role(address(this), Roles.ALL);
@@ -128,22 +125,11 @@ contract PreDepositFactory is Governance2Step {
         IVault(_vault).set_role(address(this), 0);
         IVault(_vault).transfer_role_manager(ROLE_MANAGER);
 
-        preDepositVault[_asset] = _vault;
-        stbDepositor[_asset] = address(_stbDepositor);
+        // Notify relayer of new vault
+        DEPOSIT_RELAYER.newVault(_asset, _vault, address(_stbDepositor));
 
         emit PreDepositDeployed(_asset, _vault);
 
         return _vault;
-    }
-
-    /// @notice Sets the vault for a specific asset
-    /// @dev Can only be called by the governance to override the vault
-    /// @param asset The token address
-    /// @param vault The corresponding Pre-Deposit vault address
-    function setVault(address asset, address vault) external onlyGovernance {
-        require(asset != address(0), "ZERO_ADDRESS");
-
-        preDepositVault[asset] = vault;
-        emit VaultSet(asset, vault);
     }
 }

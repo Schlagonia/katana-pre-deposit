@@ -30,7 +30,7 @@ contract Deploy is Script {
         console.log("DepositRelayer deployed to:", address(preDepositFactory.DEPOSIT_RELAYER()));
         console.log("Accountant deployed to:", address(preDepositFactory.ACCOUNTANT()));
         console.log("ShareReceiver deployed to:", address(preDepositFactory.DEPOSIT_RELAYER().SHARE_RECEIVER()));
-        console.log("STBDepositor deployed to:", address(preDepositFactory.stbDepositor(address(asset))));
+        console.log("STBDepositor deployed to:", address(preDepositFactory.DEPOSIT_RELAYER().stbDepositor(address(asset))));
 
         vm.stopBroadcast();
     }

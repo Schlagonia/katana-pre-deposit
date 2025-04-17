@@ -121,7 +121,7 @@ contract Setup is ExtendedTest, IEvents {
         );
 
         strategy = IStrategyInterface(
-            preDepositFactory.stbDepositor(address(asset))
+            depositRelayer.stbDepositor(address(asset))
         );
 
         vm.prank(management);

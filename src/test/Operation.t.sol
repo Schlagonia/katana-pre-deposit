@@ -11,8 +11,10 @@ contract OperationTest is Setup {
         address indexed asset,
         address indexed user,
         uint256 indexed amount,
-        uint256 originChainId
+        uint256 originChainId,
+        address referral
     );
+    event DepositCapSet(address indexed asset, uint256 cap);
 
     function setUp() public virtual override {
         super.setUp();
@@ -77,7 +79,7 @@ contract OperationTest is Setup {
 
     function test_constructor() public {
         // Test PreDepositFactory constructor
-        assertEq(preDepositFactory.governance(), management);
+        assertEq(depositRelayer.governance(), management);
         assertEq(preDepositFactory.TARGET_NETWORK_ID(), targetNetworkId);
         assertEq(
             address(preDepositFactory.DEPOSIT_RELAYER()),
@@ -111,7 +113,7 @@ contract OperationTest is Setup {
             newStbVault
         );
 
-        assertEq(preDepositFactory.preDepositVault(newAsset), newVault);
+        assertEq(depositRelayer.preDepositVault(newAsset), newVault);
 
         vm.stopPrank();
     }
@@ -125,8 +127,8 @@ contract OperationTest is Setup {
         vm.expectEmit(true, true, false, true);
         emit VaultSet(newAsset, newVault);
 
-        preDepositFactory.setVault(newAsset, newVault);
-        assertEq(preDepositFactory.preDepositVault(newAsset), newVault);
+        depositRelayer.setVault(newAsset, newVault);
+        assertEq(depositRelayer.preDepositVault(newAsset), newVault);
 
         vm.stopPrank();
     }
@@ -145,13 +147,14 @@ contract OperationTest is Setup {
             address(asset),
             user,
             depositAmount,
-            block.chainid
+            block.chainid,
+            address(0)
         );
 
         depositRelayer.deposit(address(asset), depositAmount);
 
         // Check deposited amount is tracked
-        assertEq(shareReceiver.deposited(address(asset), user), depositAmount);
+        assertEq(depositRelayer.deposited(address(asset), user), depositAmount);
 
         vm.stopPrank();
     }
@@ -163,7 +166,7 @@ contract OperationTest is Setup {
         // Setup relayer with tokens
         airdrop(asset, address(depositRelayer), depositAmount);
 
-        bytes memory message = abi.encode(user, originChainId);
+        bytes memory message = abi.encode(user, originChainId, address(0));
 
         vm.prank(acrossBridge);
         vm.expectEmit(true, true, true, true);
@@ -171,7 +174,8 @@ contract OperationTest is Setup {
             address(asset),
             user,
             depositAmount,
-            originChainId
+            originChainId,
+            address(0)
         );
 
         depositRelayer.handleV3AcrossMessage(
@@ -182,7 +186,7 @@ contract OperationTest is Setup {
         );
 
         // Check deposited amount is tracked
-        assertEq(shareReceiver.deposited(address(asset), user), depositAmount);
+        assertEq(depositRelayer.deposited(address(asset), user), depositAmount);
     }
 
     function test_shareReceiver_pullShares() public {
@@ -216,7 +220,7 @@ contract OperationTest is Setup {
     function test_RevertWhen_NonFactorySetVault() public {
         vm.prank(user);
         vm.expectRevert("!governance");
-        preDepositFactory.setVault(address(asset), address(preDepositVault));
+        depositRelayer.setVault(address(asset), address(preDepositVault));
     }
 
     function test_RevertWhen_NonBridgeHandlesMessage() public {
@@ -264,9 +268,239 @@ contract OperationTest is Setup {
         asset.approve(address(depositRelayer), amount);
         depositRelayer.deposit(address(asset), amount);
 
-        assertEq(shareReceiver.deposited(address(asset), user), amount);
+        assertEq(depositRelayer.deposited(address(asset), user), amount);
         assertEq(preDepositVault.balanceOf(user), 0);
         assertEq(preDepositVault.balanceOf(address(shareReceiver)), amount);
         vm.stopPrank();
+    }
+
+    function test_depositRelayer_deposit_withReferral() public {
+        uint256 depositAmount = 1000 * 10 ** decimals;
+        address referral = address(0xdead);
+
+        // Setup user with tokens
+        airdrop(asset, user, depositAmount);
+
+        vm.startPrank(user);
+        asset.approve(address(depositRelayer), depositAmount);
+
+        vm.expectEmit(true, true, true, true);
+        emit DepositProcessed(
+            address(asset),
+            user,
+            depositAmount,
+            block.chainid,
+            referral
+        );
+
+        depositRelayer.deposit(address(asset), depositAmount, referral);
+
+        // Check deposited amount is tracked
+        assertEq(depositRelayer.deposited(address(asset), user), depositAmount);
+        assertEq(
+            preDepositVault.balanceOf(address(shareReceiver)),
+            depositAmount
+        );
+
+        vm.stopPrank();
+    }
+
+    function test_depositRelayer_handleV3AcrossMessage_withReferral() public {
+        uint256 depositAmount = 1000 * 10 ** decimals;
+        uint256 originChainId = 137; // Example chain ID
+        address referral = address(0xdead);
+
+        // Setup relayer with tokens
+        airdrop(asset, address(depositRelayer), depositAmount);
+
+        bytes memory message = abi.encode(user, originChainId, referral);
+
+        vm.prank(acrossBridge);
+        vm.expectEmit(true, true, true, true);
+        emit DepositProcessed(
+            address(asset),
+            user,
+            depositAmount,
+            originChainId,
+            referral
+        );
+
+        depositRelayer.handleV3AcrossMessage(
+            address(asset),
+            depositAmount,
+            address(0), // relayer address (unused)
+            message
+        );
+
+        // Check deposited amount is tracked
+        assertEq(depositRelayer.deposited(address(asset), user), depositAmount);
+        assertEq(
+            preDepositVault.balanceOf(address(shareReceiver)),
+            depositAmount
+        );
+    }
+
+    function testFuzz_depositRelayer_deposit_withReferral(
+        uint256 amount,
+        address referral
+    ) public {
+        vm.assume(amount > minFuzzAmount && amount < maxFuzzAmount);
+
+        airdrop(asset, user, amount);
+
+        vm.startPrank(user);
+        asset.approve(address(depositRelayer), amount);
+        depositRelayer.deposit(address(asset), amount, referral);
+
+        assertEq(depositRelayer.deposited(address(asset), user), amount);
+        assertEq(preDepositVault.balanceOf(user), 0);
+        assertEq(preDepositVault.balanceOf(address(shareReceiver)), amount);
+        vm.stopPrank();
+    }
+
+    function test_depositCaps() public {
+        uint256 depositAmount = 1000 * 10 ** decimals;
+        uint256 depositCap = 2000 * 10 ** decimals;
+
+        // Set deposit cap
+        vm.prank(management);
+        depositRelayer.setDepositCap(address(asset), depositCap);
+
+        // Verify max deposit
+        assertEq(depositRelayer.maxDeposit(address(asset)), depositCap);
+
+        // First deposit should succeed
+        airdrop(asset, user, depositAmount);
+        vm.startPrank(user);
+        asset.approve(address(depositRelayer), depositAmount);
+        depositRelayer.deposit(address(asset), depositAmount);
+        vm.stopPrank();
+
+        // Verify deposit was tracked
+        assertEq(depositRelayer.totalDeposited(address(asset)), depositAmount);
+        assertEq(
+            depositRelayer.maxDeposit(address(asset)),
+            depositCap - depositAmount
+        );
+
+        // Second deposit that would exceed cap should fail
+        uint256 secondDeposit = depositCap;
+        airdrop(asset, user, secondDeposit);
+        vm.startPrank(user);
+        asset.approve(address(depositRelayer), secondDeposit);
+        vm.expectRevert("Deposit cap exceeded");
+        depositRelayer.deposit(address(asset), secondDeposit);
+        vm.stopPrank();
+    }
+
+    function test_depositCaps_acrossMessage() public {
+        uint256 depositAmount = 1000 * 10 ** decimals;
+        uint256 depositCap = 2000 * 10 ** decimals;
+        uint256 originChainId = 137;
+
+        // Set deposit cap
+        vm.prank(management);
+        depositRelayer.setDepositCap(address(asset), depositCap);
+
+        // First deposit should succeed
+        airdrop(asset, address(depositRelayer), depositAmount);
+        bytes memory message = abi.encode(user, originChainId, address(0));
+        vm.prank(acrossBridge);
+        depositRelayer.handleV3AcrossMessage(
+            address(asset),
+            depositAmount,
+            address(0),
+            message
+        );
+
+        // Verify deposit was tracked
+        assertEq(depositRelayer.totalDeposited(address(asset)), depositAmount);
+        assertEq(
+            depositRelayer.maxDeposit(address(asset)),
+            depositCap - depositAmount
+        );
+
+        // Second deposit that would exceed cap should fail
+        uint256 secondDeposit = depositCap;
+        airdrop(asset, address(depositRelayer), secondDeposit);
+        message = abi.encode(user, originChainId, address(0));
+        vm.prank(acrossBridge);
+        vm.expectRevert("Deposit cap exceeded");
+        depositRelayer.handleV3AcrossMessage(
+            address(asset),
+            secondDeposit,
+            address(0),
+            message
+        );
+    }
+
+    function test_RevertWhen_NonGovernanceSetsCap() public {
+        vm.prank(user);
+        vm.expectRevert("!governance");
+        depositRelayer.setDepositCap(address(asset), 1000);
+    }
+
+    function test_setDepositCap() public {
+        uint256 newCap = 1000 * 10 ** decimals;
+
+        vm.startPrank(management);
+
+        vm.expectEmit(true, false, false, true);
+        emit DepositCapSet(address(asset), newCap);
+
+        depositRelayer.setDepositCap(address(asset), newCap);
+        assertEq(depositRelayer.depositCap(address(asset)), newCap);
+        assertEq(depositRelayer.maxDeposit(address(asset)), newCap);
+
+        vm.stopPrank();
+    }
+
+    function testFuzz_depositCaps(
+        uint256 cap,
+        uint256 firstDeposit,
+        uint256 secondDeposit
+    ) public {
+        // Bound the values to reasonable ranges
+        cap = bound(cap, minFuzzAmount, maxFuzzAmount);
+        firstDeposit = bound(firstDeposit, minFuzzAmount, cap);
+        secondDeposit = bound(secondDeposit, 1, maxFuzzAmount);
+
+        // Set deposit cap
+        vm.prank(management);
+        depositRelayer.setDepositCap(address(asset), cap);
+
+        // First deposit
+        airdrop(asset, user, firstDeposit);
+        vm.startPrank(user);
+        asset.approve(address(depositRelayer), firstDeposit);
+        depositRelayer.deposit(address(asset), firstDeposit);
+        vm.stopPrank();
+
+        // Verify first deposit
+        assertEq(depositRelayer.totalDeposited(address(asset)), firstDeposit);
+        assertEq(depositRelayer.maxDeposit(address(asset)), cap - firstDeposit);
+
+        // Second deposit
+        if (secondDeposit + firstDeposit > cap) {
+            // Should fail if it would exceed cap
+            airdrop(asset, user, secondDeposit);
+            vm.startPrank(user);
+            asset.approve(address(depositRelayer), secondDeposit);
+            vm.expectRevert("Deposit cap exceeded");
+            depositRelayer.deposit(address(asset), secondDeposit);
+            vm.stopPrank();
+        } else {
+            // Should succeed if within cap
+            airdrop(asset, user, secondDeposit);
+            vm.startPrank(user);
+            asset.approve(address(depositRelayer), secondDeposit);
+            depositRelayer.deposit(address(asset), secondDeposit);
+            vm.stopPrank();
+
+            assertEq(
+                depositRelayer.totalDeposited(address(asset)),
+                firstDeposit + secondDeposit
+            );
+        }
     }
 }

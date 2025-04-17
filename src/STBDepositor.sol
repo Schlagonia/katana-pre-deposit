@@ -73,13 +73,4 @@ contract STBDepositor is Base4626Compounder {
         }
         return 0;
     }
-
-    function availableWithdrawLimit(
-        address _owner
-    ) public view override returns (uint256) {
-        if (bridged) {
-            return 0;
-        }
-        return super.availableWithdrawLimit(_owner);
-    }
 }
