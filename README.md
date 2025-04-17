@@ -1,5 +1,7 @@
 # Katana Pre Deposit Vaults
 
+![alt text](image.png)
+
 ## How to start
 
 ### Requirements
