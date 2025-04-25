@@ -503,4 +503,210 @@ contract OperationTest is Setup {
             );
         }
     }
+
+    function test_depositRelayer_depositEth() public {
+        uint256 depositAmount = 1 ether;
+
+        // Set WETH vault
+        address wethVault = newPreDepositVault(weth);
+
+        vm.expectEmit(true, true, true, true);
+        emit DepositProcessed(
+            weth,
+            user,
+            depositAmount,
+            block.chainid,
+            address(0)
+        );
+
+        vm.deal(user, depositAmount);
+        vm.prank(user);
+        depositRelayer.depositEth{value: depositAmount}();
+
+        // Check deposited amount is tracked
+        assertEq(depositRelayer.deposited(weth, user), depositAmount);
+        assertEq(ERC20(weth).balanceOf(address(depositRelayer)), 0);
+        assertEq(
+            IVault(wethVault).balanceOf(address(shareReceiver)),
+            depositAmount
+        );
+    }
+
+    function test_depositRelayer_depositEth_withReferral() public {
+        uint256 depositAmount = 1 ether;
+        address referral = address(0xdead);
+
+        // Set WETH vault
+        address wethVault = newPreDepositVault(weth);
+
+        vm.expectEmit(true, true, true, true);
+        emit DepositProcessed(
+            weth,
+            user,
+            depositAmount,
+            block.chainid,
+            referral
+        );
+
+        vm.deal(user, depositAmount);
+        vm.prank(user);
+        depositRelayer.depositEth{value: depositAmount}(referral);
+
+        // Check deposited amount is tracked
+        assertEq(depositRelayer.deposited(weth, user), depositAmount);
+        assertEq(ERC20(weth).balanceOf(address(depositRelayer)), 0);
+        assertEq(
+            IVault(wethVault).balanceOf(address(shareReceiver)),
+            depositAmount
+        );
+    }
+
+    function test_RevertWhen_DepositingEthWithoutVault() public {
+        vm.deal(user, 1 ether);
+        vm.prank(user);
+        vm.expectRevert("Vault not set");
+        depositRelayer.depositEth{value: 1 ether}();
+    }
+
+    function test_RevertWhen_DepositingZeroEth() public {
+        newPreDepositVault(weth);
+        vm.prank(user);
+        vm.expectRevert("Invalid amount");
+        depositRelayer.depositEth{value: 0}();
+    }
+
+    function test_depositRelayer_handleRelayLinkDeposit() public {
+        uint256 depositAmount = 1000 * 10 ** decimals;
+        uint256 originChainId = 137; // Example chain ID
+        address referral = address(0xdead);
+
+        // Setup relayer with tokens
+        airdrop(asset, address(depositRelayer), depositAmount);
+
+        vm.prank(relayLinkBridge);
+        vm.expectEmit(true, true, true, true);
+        emit DepositProcessed(
+            address(asset),
+            user,
+            depositAmount,
+            originChainId,
+            referral
+        );
+
+        depositRelayer.handleRelayLinkDeposit(
+            address(asset),
+            depositAmount,
+            user,
+            originChainId,
+            referral
+        );
+
+        // Check deposited amount is tracked
+        assertEq(depositRelayer.deposited(address(asset), user), depositAmount);
+        assertEq(
+            preDepositVault.balanceOf(address(shareReceiver)),
+            depositAmount
+        );
+    }
+
+    function test_RevertWhen_NonRelayLinkBridgeHandlesDeposit() public {
+        vm.prank(user);
+        vm.expectRevert("Invalid caller");
+        depositRelayer.handleRelayLinkDeposit(
+            address(asset),
+            100,
+            user,
+            1,
+            address(0)
+        );
+    }
+
+    function test_depositCaps_withEth() public {
+        uint256 depositAmount = 1 ether;
+        uint256 depositCap = 2 ether;
+
+        // Set WETH vault
+
+        address wethVault = newPreDepositVault(weth);
+
+        vm.startPrank(management);
+        depositRelayer.setDepositCap(weth, depositCap);
+        vm.stopPrank();
+
+        // First deposit should succeed
+        vm.deal(user, depositAmount);
+        vm.prank(user);
+        depositRelayer.depositEth{value: depositAmount}();
+
+        // Verify deposit was tracked
+        assertEq(depositRelayer.totalDeposited(weth), depositAmount);
+        assertEq(depositRelayer.maxDeposit(weth), depositCap - depositAmount);
+
+        // Second deposit that would exceed cap should fail
+        uint256 secondDeposit = depositCap;
+        vm.deal(user, secondDeposit);
+        vm.prank(user);
+        vm.expectRevert("Deposit cap exceeded");
+        depositRelayer.depositEth{value: secondDeposit}();
+    }
+
+    function testFuzz_depositRelayer_depositEth(
+        uint256 amount,
+        address referral
+    ) public {
+        // Bound amount between 0.01 ETH and 100 ETH
+        amount = bound(amount, 0.01 ether, 100 ether);
+
+        // Set WETH vault
+        address wethVault = newPreDepositVault(weth);
+
+        vm.deal(user, amount);
+        vm.prank(user);
+        depositRelayer.depositEth{value: amount}(referral);
+
+        assertEq(depositRelayer.deposited(weth, user), amount);
+        assertEq(ERC20(weth).balanceOf(address(depositRelayer)), 0);
+        assertEq(IVault(wethVault).balanceOf(address(shareReceiver)), amount);
+    }
+
+    function test_depositRelayer_handleRelayLinkDeposit_withCaps() public {
+        uint256 depositAmount = 1000 * 10 ** decimals;
+        uint256 depositCap = 2000 * 10 ** decimals;
+        uint256 originChainId = 137;
+
+        // Set deposit cap
+        vm.prank(management);
+        depositRelayer.setDepositCap(address(asset), depositCap);
+
+        // First deposit should succeed
+        airdrop(asset, address(depositRelayer), depositAmount);
+        vm.prank(relayLinkBridge);
+        depositRelayer.handleRelayLinkDeposit(
+            address(asset),
+            depositAmount,
+            user,
+            originChainId,
+            address(0)
+        );
+
+        // Verify deposit was tracked
+        assertEq(depositRelayer.totalDeposited(address(asset)), depositAmount);
+        assertEq(
+            depositRelayer.maxDeposit(address(asset)),
+            depositCap - depositAmount
+        );
+
+        // Second deposit that would exceed cap should fail
+        uint256 secondDeposit = depositCap;
+        airdrop(asset, address(depositRelayer), secondDeposit);
+        vm.prank(relayLinkBridge);
+        vm.expectRevert("Deposit cap exceeded");
+        depositRelayer.handleRelayLinkDeposit(
+            address(asset),
+            secondDeposit,
+            user,
+            originChainId,
+            address(0)
+        );
+    }
 }

@@ -28,7 +28,7 @@ Run tests with traces (very useful)
 make trace
 ```
 
-Run specific test contract (e.g. `test/StrategyOperation.t.sol`)
+Run specific test contract (e.g. `test/StrategyOperation.t.sol`)g
 
 ```sh
 make test-contract contract=StrategyOperationsTest

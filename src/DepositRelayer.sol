@@ -5,12 +5,11 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IVault} from "@yearn-vaults/interfaces/IVault.sol";
-
 import {Governance2Step} from "@periphery/utils/Governance2Step.sol";
 
-import {PreDepositFactory} from "./PreDepositFactory.sol";
-
+import {IWETH} from "./interfaces/IWETH.sol";
 import {ShareReceiver} from "./ShareReceiver.sol";
+import {PreDepositFactory} from "./PreDepositFactory.sol";
 import {IAccrossMessageReceiver} from "./interfaces/IAccrossMessageReceiver.sol";
 
 contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
@@ -34,8 +33,15 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
         require(msg.sender == PRE_DEPOSIT_FACTORY, "!vaultFactory");
         _;
     }
+
+    /// @notice Address of the WETH token
+    address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
     /// @notice Address of the Across bridge
     address public immutable ACROSS_BRIDGE;
+
+    /// @notice Address of the RelayLink bridge
+    address public immutable RELAY_LINK_BRIDGE;
 
     /// @notice Address to hold the vault shares
     address public immutable SHARE_RECEIVER;
@@ -62,11 +68,14 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
 
     constructor(
         address _governance,
-        address _acrossBridge
+        address _acrossBridge,
+        address _relayLinkBridge
     ) Governance2Step(_governance) {
         PRE_DEPOSIT_FACTORY = msg.sender;
         require(_acrossBridge != address(0), "ZERO_ADDRESS");
+        require(_relayLinkBridge != address(0), "ZERO_ADDRESS");
         ACROSS_BRIDGE = _acrossBridge;
+        RELAY_LINK_BRIDGE = _relayLinkBridge;
         SHARE_RECEIVER = address(new ShareReceiver());
     }
 
@@ -78,6 +87,33 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
         bytes memory message
     ) external {
         require(msg.sender == ACROSS_BRIDGE, "Invalid caller");
+        (address user, uint256 originChainId, address referral) = abi.decode(
+            message,
+            (address, uint256, address)
+        );
+
+        _handleBridgeDeposit(token, amount, user, originChainId, referral);
+    }
+
+    /// @notice function called by Across bridge when funds arrive
+    function handleRelayLinkDeposit(
+        address token,
+        uint256 amount,
+        address user,
+        uint256 originChainId,
+        address referral
+    ) external {
+        require(msg.sender == RELAY_LINK_BRIDGE, "Invalid caller");
+        _handleBridgeDeposit(token, amount, user, originChainId, referral);
+    }
+
+    function _handleBridgeDeposit(
+        address token,
+        uint256 amount,
+        address user,
+        uint256 originChainId,
+        address referral
+    ) internal {
         address vault = preDepositVault[token];
         require(vault != address(0), "Vault not set");
 
@@ -85,11 +121,6 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
         require(
             amount > 0 && ERC20(token).balanceOf(address(this)) >= amount,
             "Insufficient amount"
-        );
-
-        (address user, uint256 originChainId, address referral) = abi.decode(
-            message,
-            (address, uint256, address)
         );
 
         require(user != address(0), "Invalid user");
@@ -136,6 +167,24 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
 
         ERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         _deposit(token, vault, msg.sender, amount, block.chainid, referral);
+    }
+
+    /// @notice Deposit ETH into the vault
+    /// @dev This is used by those on the same chain and default to no referral
+    function depositEth() public payable {
+        depositEth(address(0));
+    }
+
+    /// @notice Deposit ETH into the vault
+    /// @dev This is used by those on the same chain.
+    function depositEth(address referral) public payable {
+        address vault = preDepositVault[WETH];
+        require(vault != address(0), "Vault not set");
+        uint256 amount = msg.value;
+        require(amount > 0, "Invalid amount");
+        IWETH(WETH).deposit{value: amount}();
+
+        _deposit(WETH, vault, msg.sender, amount, block.chainid, referral);
     }
 
     /// @notice Get the max deposit amount for a specific token
