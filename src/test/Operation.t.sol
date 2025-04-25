@@ -14,7 +14,7 @@ contract OperationTest is Setup {
         uint256 originChainId,
         address referral
     );
-    event DepositCapSet(address indexed asset, uint256 cap);
+    event DepositCapSet(address indexed asset, uint256 indexed cap);
 
     function setUp() public virtual override {
         super.setUp();
