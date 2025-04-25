@@ -27,7 +27,7 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
     event VaultSet(address indexed asset, address indexed vault);
 
     /// @notice Event emitted when a deposit cap is set for a specific asset
-    event DepositCapSet(address indexed asset, uint256 cap);
+    event DepositCapSet(address indexed asset, uint256 indexed cap);
 
     modifier onlyVaultFactory() {
         require(msg.sender == PRE_DEPOSIT_FACTORY, "!vaultFactory");
@@ -95,7 +95,7 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
         _handleBridgeDeposit(token, amount, user, originChainId, referral);
     }
 
-    /// @notice function called by Across bridge when funds arrive
+    /// @notice function called by RelayLink bridge when funds arrive
     function handleRelayLinkDeposit(
         address token,
         uint256 amount,
