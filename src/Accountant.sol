@@ -25,11 +25,6 @@ contract Accountant {
         uint256 gain,
         uint256 loss
     ) public virtual returns (uint256 totalFees, uint256) {
-        require(
-            DEPOSIT_RELAYER.preDepositVault(IVault(msg.sender).asset()) ==
-                msg.sender,
-            "Invalid vault"
-        );
         // Should not take on losses
         require(loss == 0, "loss too high");
 

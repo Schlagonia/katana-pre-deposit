@@ -5,12 +5,11 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IVault} from "@yearn-vaults/interfaces/IVault.sol";
-
 import {Governance2Step} from "@periphery/utils/Governance2Step.sol";
 
-import {PreDepositFactory} from "./PreDepositFactory.sol";
-
+import {IWETH} from "./interfaces/IWETH.sol";
 import {ShareReceiver} from "./ShareReceiver.sol";
+import {PreDepositFactory} from "./PreDepositFactory.sol";
 import {IAccrossMessageReceiver} from "./interfaces/IAccrossMessageReceiver.sol";
 
 contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
@@ -24,24 +23,37 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
         address referral
     );
 
+    /// @notice Event emitted when the Across bridge is set
+    event AcrossBridgeSet(address indexed acrossBridge);
+
+    /// @notice Event emitted when the RelayLink bridge is set
+    event RelayLinkBridgeSet(address indexed relayLinkBridge);
+
     /// @notice Event emitted when a vault is set for a specific asset
     event VaultSet(address indexed asset, address indexed vault);
 
     /// @notice Event emitted when a deposit cap is set for a specific asset
-    event DepositCapSet(address indexed asset, uint256 cap);
+    event DepositCapSet(address indexed asset, uint256 indexed cap);
 
     modifier onlyVaultFactory() {
         require(msg.sender == PRE_DEPOSIT_FACTORY, "!vaultFactory");
         _;
     }
-    /// @notice Address of the Across bridge
-    address public immutable ACROSS_BRIDGE;
+
+    /// @notice Address of the WETH token
+    address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     /// @notice Address to hold the vault shares
     address public immutable SHARE_RECEIVER;
 
     /// @notice Address of the factory that deployed this contract
     address public immutable PRE_DEPOSIT_FACTORY;
+
+    /// @notice Address of the Across bridge
+    address public acrossBridge;
+
+    /// @notice Address of the RelayLink bridge
+    address public relayLinkBridge;
 
     /// @notice Token to stb depositor strategy for any deployed vaults
     mapping(address => address) public stbDepositor;
@@ -62,11 +74,19 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
 
     constructor(
         address _governance,
-        address _acrossBridge
+        address _acrossBridge,
+        address _relayLinkBridge
     ) Governance2Step(_governance) {
         PRE_DEPOSIT_FACTORY = msg.sender;
+
         require(_acrossBridge != address(0), "ZERO_ADDRESS");
-        ACROSS_BRIDGE = _acrossBridge;
+        acrossBridge = _acrossBridge;
+        emit AcrossBridgeSet(_acrossBridge);
+
+        require(_relayLinkBridge != address(0), "ZERO_ADDRESS");
+        relayLinkBridge = _relayLinkBridge;
+        emit RelayLinkBridgeSet(_relayLinkBridge);
+
         SHARE_RECEIVER = address(new ShareReceiver());
     }
 
@@ -77,7 +97,34 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
         address /* relayer */,
         bytes memory message
     ) external {
-        require(msg.sender == ACROSS_BRIDGE, "Invalid caller");
+        require(msg.sender == acrossBridge, "Invalid caller");
+        (address user, uint256 originChainId, address referral) = abi.decode(
+            message,
+            (address, uint256, address)
+        );
+
+        _handleBridgeDeposit(token, amount, user, originChainId, referral);
+    }
+
+    /// @notice function called by RelayLink bridge when funds arrive
+    function handleRelayLinkDeposit(
+        address token,
+        uint256 amount,
+        address user,
+        uint256 originChainId,
+        address referral
+    ) external {
+        require(msg.sender == relayLinkBridge, "Invalid caller");
+        _handleBridgeDeposit(token, amount, user, originChainId, referral);
+    }
+
+    function _handleBridgeDeposit(
+        address token,
+        uint256 amount,
+        address user,
+        uint256 originChainId,
+        address referral
+    ) internal {
         address vault = preDepositVault[token];
         require(vault != address(0), "Vault not set");
 
@@ -85,11 +132,6 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
         require(
             amount > 0 && ERC20(token).balanceOf(address(this)) >= amount,
             "Insufficient amount"
-        );
-
-        (address user, uint256 originChainId, address referral) = abi.decode(
-            message,
-            (address, uint256, address)
         );
 
         require(user != address(0), "Invalid user");
@@ -138,6 +180,24 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
         _deposit(token, vault, msg.sender, amount, block.chainid, referral);
     }
 
+    /// @notice Deposit ETH into the vault
+    /// @dev This is used by those on the same chain and default to no referral
+    function depositEth() public payable {
+        depositEth(address(0));
+    }
+
+    /// @notice Deposit ETH into the vault
+    /// @dev This is used by those on the same chain.
+    function depositEth(address referral) public payable {
+        address vault = preDepositVault[WETH];
+        require(vault != address(0), "Vault not set");
+        uint256 amount = msg.value;
+        require(amount > 0, "Invalid amount");
+        IWETH(WETH).deposit{value: amount}();
+
+        _deposit(WETH, vault, msg.sender, amount, block.chainid, referral);
+    }
+
     /// @notice Get the max deposit amount for a specific token
     /// @param token The token address
     /// @return The max deposit amount
@@ -173,6 +233,26 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
 
         preDepositVault[asset] = vault;
         emit VaultSet(asset, vault);
+    }
+
+    /// @notice Sets the Across bridge
+    /// @dev Set to address(0) to disable Across deposits
+    /// @param _acrossBridge The new Across bridge address
+    function setAcrossBridge(address _acrossBridge) external onlyGovernance {
+        acrossBridge = _acrossBridge;
+
+        emit AcrossBridgeSet(_acrossBridge);
+    }
+
+    /// @notice Sets the RelayLink bridge
+    /// @dev Set to address(0) to disable RelayLink deposits
+    /// @param _relayLinkBridge The new RelayLink bridge address
+    function setRelayLinkBridge(
+        address _relayLinkBridge
+    ) external onlyGovernance {
+        relayLinkBridge = _relayLinkBridge;
+
+        emit RelayLinkBridgeSet(_relayLinkBridge);
     }
 
     /// @notice Notify relayer of new vault

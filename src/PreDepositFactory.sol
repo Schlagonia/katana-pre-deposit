@@ -47,10 +47,15 @@ contract PreDepositFactory {
     constructor(
         address _governance,
         address _acrossBridge,
+        address _relayLinkBridge,
         uint32 _targetNetworkId,
         address _roleManager
     ) {
-        DEPOSIT_RELAYER = new DepositRelayer(_governance, _acrossBridge);
+        DEPOSIT_RELAYER = new DepositRelayer(
+            _governance,
+            _acrossBridge,
+            _relayLinkBridge
+        );
         ACCOUNTANT = new Accountant(address(DEPOSIT_RELAYER));
         TARGET_NETWORK_ID = _targetNetworkId;
         ROLE_MANAGER = _roleManager;

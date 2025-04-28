@@ -47,6 +47,8 @@ contract Setup is ExtendedTest, IEvents {
 
     address public acrossBridge = 0x5c7BCd6E7De5423a257D81B442095A1a6ced35C5;
 
+    address public relayLinkBridge = 0xeeeeee9eC4769A09a76A83C7bC42b185872860eE;
+
     address public katanaReceiver;
 
     IVault public stbVault;
@@ -55,6 +57,8 @@ contract Setup is ExtendedTest, IEvents {
 
     IYearnRoleManager public yearnRoleManager =
         IYearnRoleManager(0xb3bd6B2E61753C311EFbCF0111f75D29706D9a41);
+
+    address public weth;
 
     uint32 public targetNetworkId = 1;
 
@@ -93,6 +97,7 @@ contract Setup is ExtendedTest, IEvents {
 
         // Set asset
         asset = ERC20(tokenAddrs["USDC"]);
+        weth = tokenAddrs["WETH"];
 
         // Set decimals
         decimals = asset.decimals();
@@ -100,6 +105,7 @@ contract Setup is ExtendedTest, IEvents {
         preDepositFactory = new PreDepositFactory(
             management,
             acrossBridge,
+            relayLinkBridge,
             targetNetworkId,
             address(yearnRoleManager)
         );
@@ -143,6 +149,14 @@ contract Setup is ExtendedTest, IEvents {
         vm.label(address(yearnVault), "yearnVault");
         vm.label(address(depositRelayer), "depositRelayer");
         vm.label(address(preDepositFactory), "preDepositFactory");
+    }
+
+    function newPreDepositVault(address _asset) public returns (address) {
+        address _yearnVault = yearnVaults[_asset];
+        address _stbVault = deployNewVault(_asset);
+        vm.prank(management);
+        return
+            preDepositFactory.deployPreDeposit(_asset, _yearnVault, _stbVault);
     }
 
     function deployNewVault(address _asset) public returns (address) {
