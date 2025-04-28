@@ -87,7 +87,7 @@ contract OperationTest is Setup {
         );
 
         // Test DepositRelayer constructor
-        assertEq(depositRelayer.ACROSS_BRIDGE(), acrossBridge);
+        assertEq(depositRelayer.acrossBridge(), acrossBridge);
         assertEq(
             depositRelayer.PRE_DEPOSIT_FACTORY(),
             address(preDepositFactory)
