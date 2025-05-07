@@ -1,4 +1,4 @@
 {
-    "detectors_to_exclude": "naming-convention,unused-return,reentrancy",
+    "detectors_to_exclude": "naming-convention,unused-return,reentrancy-benign",
     "filter_paths": "(lib/|src/test)"
 }
