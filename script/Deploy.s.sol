@@ -10,7 +10,6 @@ contract Deploy is Script {
     address public governance;
     address public acrossBridge = 0x5c7BCd6E7De5423a257D81B442095A1a6ced35C5;
     address public relayLinkBridge = 0xeeeeee9eC4769A09a76A83C7bC42b185872860eE;
-    uint32 public targetNetworkId = 1;
     address public roleManager;
 
     address public asset;
@@ -20,7 +19,7 @@ contract Deploy is Script {
     function run() public {
         vm.startBroadcast();
 
-        PreDepositFactory preDepositFactory = new PreDepositFactory(governance, acrossBridge, relayLinkBridge, targetNetworkId, roleManager);
+        PreDepositFactory preDepositFactory = new PreDepositFactory(governance, acrossBridge, relayLinkBridge, roleManager);
 
         console.log("PreDepositFactory deployed to:", address(preDepositFactory));
         console.log("DepositRelayer deployed to:", address(preDepositFactory.DEPOSIT_RELAYER()));

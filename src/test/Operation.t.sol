@@ -80,7 +80,6 @@ contract OperationTest is Setup {
     function test_constructor() public {
         // Test PreDepositFactory constructor
         assertEq(depositRelayer.governance(), management);
-        assertEq(preDepositFactory.TARGET_NETWORK_ID(), targetNetworkId);
         assertEq(
             address(preDepositFactory.DEPOSIT_RELAYER()),
             address(depositRelayer)
@@ -197,12 +196,12 @@ contract OperationTest is Setup {
 
         // Only governance should be able to pull shares
         vm.expectRevert("!governance");
-        shareReceiver.pullShares(address(asset), amount);
+        shareReceiver.pullShares(address(asset), amount, management);
 
         uint256 balanceBefore = asset.balanceOf(management);
 
         vm.prank(management);
-        shareReceiver.pullShares(address(asset), amount);
+        shareReceiver.pullShares(address(asset), amount, management);
 
         assertEq(asset.balanceOf(management), balanceBefore + amount);
     }

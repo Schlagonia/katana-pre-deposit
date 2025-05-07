@@ -22,20 +22,20 @@ contract Accountant {
 
     function report(
         address,
-        uint256 gain,
-        uint256 loss
+        uint256 _gain,
+        uint256 _loss
     ) public virtual returns (uint256 totalFees, uint256) {
         // Should not take on losses
-        require(loss == 0, "loss too high");
+        require(_loss == 0, "loss too high");
 
         // We take a 100% fee on the gain
-        totalFees = gain;
+        totalFees = _gain;
     }
 
-    function sweep(address token) external onlyGovernance {
-        ERC20(token).safeTransfer(
+    function sweep(address _token) external onlyGovernance {
+        ERC20(_token).safeTransfer(
             msg.sender,
-            ERC20(token).balanceOf(address(this))
+            ERC20(_token).balanceOf(address(this))
         );
     }
 }

@@ -6,31 +6,30 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 import {IPolygonZkEVMBridge} from "./interfaces/IPolygonZkEVMBridge.sol";
 
-// Do we want a timelock period to bridge the funds?
-// Do we want a second signer to okay the bridging
+import {PreDepositFactory} from "./PreDepositFactory.sol";
+
 contract STBDepositor is Base4626Compounder {
     using SafeERC20 for ERC20;
+
+    event KatanaReceiverSet(address indexed newKatanaReceiver);
 
     IPolygonZkEVMBridge public constant ZKEVM_BRIDGE =
         IPolygonZkEVMBridge(0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe);
 
     address public immutable PRE_DEPOSIT_VAULT;
 
-    uint32 public immutable TARGET_NETWORK_ID;
+    PreDepositFactory public immutable PRE_DEPOSIT_FACTORY;
 
     address public katanaReceiver;
-
-    bool public bridged;
 
     constructor(
         address _asset,
         string memory _name,
         address _vault,
-        address _preDepositVault,
-        uint32 _targetNetworkId
+        address _preDepositVault
     ) Base4626Compounder(_asset, _name, _vault) {
         PRE_DEPOSIT_VAULT = _preDepositVault;
-        TARGET_NETWORK_ID = _targetNetworkId;
+        PRE_DEPOSIT_FACTORY = PreDepositFactory(msg.sender);
     }
 
     function bridgeFunds() external onlyManagement {
@@ -43,26 +42,26 @@ contract STBDepositor is Base4626Compounder {
 
         ERC20(address(vault)).forceApprove(address(ZKEVM_BRIDGE), shares);
 
+        uint32 targetRollupId = PRE_DEPOSIT_FACTORY.targetRollupId();
+        require(targetRollupId != 0, "!targetRollupId");
+
         ZKEVM_BRIDGE.bridgeAsset(
-            TARGET_NETWORK_ID,
+            targetRollupId,
             katanaReceiver,
             shares,
             address(vault),
             true,
             ""
         );
-
-        if (!bridged) {
-            // Return 0 withdraw limit once funds are bridged
-            bridged = true;
-        }
     }
 
     function setKatanaReceiver(
         address _katanaReceiver
     ) external onlyManagement {
         require(_katanaReceiver != address(0), "ZERO ADDRESS");
+
         katanaReceiver = _katanaReceiver;
+        emit KatanaReceiverSet(_katanaReceiver);
     }
 
     function availableDepositLimit(
