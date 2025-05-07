@@ -104,8 +104,7 @@ contract BridgeTest is Setup {
                     address(asset),
                     "STB Depositor",
                     address(stbVault),
-                    address(preDepositVault),
-                    targetNetworkId
+                    address(preDepositVault)
                 )
             )
         );

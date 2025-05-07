@@ -106,9 +106,11 @@ contract Setup is ExtendedTest, IEvents {
             management,
             acrossBridge,
             relayLinkBridge,
-            targetNetworkId,
             address(yearnRoleManager)
         );
+
+        vm.prank(management);
+        preDepositFactory.setTargetRollupId(targetNetworkId);
 
         depositRelayer = preDepositFactory.DEPOSIT_RELAYER();
         shareReceiver = ShareReceiver(depositRelayer.SHARE_RECEIVER());

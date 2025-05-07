@@ -9,10 +9,9 @@ import {Governance2Step} from "@periphery/utils/Governance2Step.sol";
 
 import {IWETH} from "./interfaces/IWETH.sol";
 import {ShareReceiver} from "./ShareReceiver.sol";
-import {PreDepositFactory} from "./PreDepositFactory.sol";
-import {IAccrossMessageReceiver} from "./interfaces/IAccrossMessageReceiver.sol";
+import {IAcrossMessageReceiver} from "./interfaces/IAcrossMessageReceiver.sol";
 
-contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
+contract DepositRelayer is Governance2Step, IAcrossMessageReceiver {
     using SafeERC20 for ERC20;
 
     event DepositProcessed(
@@ -40,7 +39,7 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
         _;
     }
 
-    /// @notice Address of the WETH token
+    /// @notice Address of the WETH asset
     address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     /// @notice Address to hold the vault shares
@@ -55,21 +54,21 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
     /// @notice Address of the RelayLink bridge
     address public relayLinkBridge;
 
-    /// @notice Token to stb depositor strategy for any deployed vaults
+    /// @notice asset to stb depositor strategy for any deployed vaults
     mapping(address => address) public stbDepositor;
 
-    /// @notice Token to vault mapping for any deployed vaults
+    /// @notice asset to vault mapping for any deployed vaults
     mapping(address => address) public preDepositVault;
 
-    /// @notice Track deposit cap for each token
+    /// @notice Track deposit cap for each asset
     mapping(address => uint256) public depositCap;
 
-    /// @notice Track total deposited amount for each token
-    /// Track token instead of vault incase vault is updated
+    /// @notice Track total deposited amount for each asset
+    /// Track asset instead of vault incase vault is updated
     mapping(address => uint256) public totalDeposited;
 
-    /// @notice Track deposited amount for each token and user
-    /// @dev Use token instead of vault incase vault is updated
+    /// @notice Track deposited amount for each asset and user
+    /// @dev Use asset instead of vault incase vault is updated
     mapping(address => mapping(address => uint256)) public deposited;
 
     constructor(
@@ -92,92 +91,103 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
 
     /// @notice function called by Across bridge when funds arrive
     function handleV3AcrossMessage(
-        address token,
-        uint256 amount,
+        address _asset,
+        uint256 _amount,
         address /* relayer */,
-        bytes memory message
+        bytes memory _message
     ) external {
         require(msg.sender == acrossBridge, "Invalid caller");
-        (address user, uint256 originChainId, address referral) = abi.decode(
-            message,
+        (address _user, uint256 _originChainId, address _referral) = abi.decode(
+            _message,
             (address, uint256, address)
         );
 
-        _handleBridgeDeposit(token, amount, user, originChainId, referral);
+        _handleBridgeDeposit(_asset, _amount, _user, _originChainId, _referral);
     }
 
     /// @notice function called by RelayLink bridge when funds arrive
     function handleRelayLinkDeposit(
-        address token,
-        uint256 amount,
-        address user,
-        uint256 originChainId,
-        address referral
+        address _asset,
+        uint256 _amount,
+        address _user,
+        uint256 _originChainId,
+        address _referral
     ) external {
         require(msg.sender == relayLinkBridge, "Invalid caller");
-        _handleBridgeDeposit(token, amount, user, originChainId, referral);
+        _handleBridgeDeposit(_asset, _amount, _user, _originChainId, _referral);
     }
 
     function _handleBridgeDeposit(
-        address token,
-        uint256 amount,
-        address user,
-        uint256 originChainId,
-        address referral
+        address _asset,
+        uint256 _amount,
+        address _user,
+        uint256 _originChainId,
+        address _referral
     ) internal {
-        address vault = preDepositVault[token];
-        require(vault != address(0), "Vault not set");
-
+        address _vault = preDepositVault[_asset];
+        require(_vault != address(0), "Vault not set");
         // Funds should have been transferred to this contract before calling this function
         require(
-            amount > 0 && ERC20(token).balanceOf(address(this)) >= amount,
+            _amount > 0 && ERC20(_asset).balanceOf(address(this)) >= _amount,
             "Insufficient amount"
         );
+        require(_user != address(0), "Invalid user");
+        require(
+            _originChainId != 0 && _originChainId != block.chainid,
+            "Invalid chain id"
+        );
 
-        require(user != address(0), "Invalid user");
-        require(originChainId != 0, "Invalid chain id");
-
-        _deposit(token, vault, user, amount, originChainId, referral);
+        _deposit(_asset, _vault, _user, _amount, _originChainId, _referral);
     }
 
     function _deposit(
-        address token,
-        address vault,
-        address user,
-        uint256 amount,
-        uint256 originChainId,
-        address referral
+        address _asset,
+        address _vault,
+        address _user,
+        uint256 _amount,
+        uint256 _originChainId,
+        address _referral
     ) internal {
-        require(amount <= maxDeposit(token), "Deposit cap exceeded");
+        require(_amount <= maxDeposit(_asset), "Deposit cap exceeded");
 
-        // Approve vault to spend tokens
-        ERC20(token).forceApprove(address(vault), amount);
+        // Approve vault to spend assets
+        ERC20(_asset).forceApprove(_vault, _amount);
 
         // Deposit into vault and send shares to recipient
-        IVault(vault).deposit(amount, SHARE_RECEIVER);
+        IVault(_vault).deposit(_amount, SHARE_RECEIVER);
 
         // Record deposit
-        deposited[token][user] += amount;
-        totalDeposited[token] += amount;
+        deposited[_asset][_user] += _amount;
+        totalDeposited[_asset] += _amount;
 
-        emit DepositProcessed(token, user, amount, originChainId, referral);
+        emit DepositProcessed(
+            _asset,
+            _user,
+            _amount,
+            _originChainId,
+            _referral
+        );
     }
 
-    /// @notice Deposit tokens into the vault
-    /// @dev This is ued by those on the same chain and default to no referral
-    function deposit(address token, uint256 amount) public {
-        deposit(token, amount, address(0));
+    /// @notice Deposit assets into the vault
+    /// @dev This is used by those on the same chain and default to no referral
+    function deposit(address _asset, uint256 _amount) external {
+        deposit(_asset, _amount, address(0));
     }
 
-    /// @notice Deposit tokens into the vault
-    /// @dev This is ued by those on the same chain.
-    function deposit(address token, uint256 amount, address referral) public {
-        address vault = preDepositVault[token];
+    /// @notice Deposit assets into the vault
+    /// @dev This is used by those on the same chain.
+    function deposit(
+        address _asset,
+        uint256 _amount,
+        address _referral
+    ) public {
+        address vault = preDepositVault[_asset];
         require(vault != address(0), "Vault not set");
-        require(amount > 0, "Invalid amount");
+        require(_amount > 0, "Invalid amount");
 
-        ERC20(token).safeTransferFrom(msg.sender, address(this), amount);
-        _deposit(token, vault, msg.sender, amount, block.chainid, referral);
+        ERC20(_asset).safeTransferFrom(msg.sender, address(this), _amount);
+        _deposit(_asset, vault, msg.sender, _amount, block.chainid, _referral);
     }
 
     /// @notice Deposit ETH into the vault
@@ -188,26 +198,26 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
 
     /// @notice Deposit ETH into the vault
     /// @dev This is used by those on the same chain.
-    function depositEth(address referral) public payable {
+    function depositEth(address _referral) public payable {
         address vault = preDepositVault[WETH];
         require(vault != address(0), "Vault not set");
         uint256 amount = msg.value;
         require(amount > 0, "Invalid amount");
         IWETH(WETH).deposit{value: amount}();
 
-        _deposit(WETH, vault, msg.sender, amount, block.chainid, referral);
+        _deposit(WETH, vault, msg.sender, amount, block.chainid, _referral);
     }
 
-    /// @notice Get the max deposit amount for a specific token
-    /// @param token The token address
+    /// @notice Get the max deposit amount for a specific asset
+    /// @param _asset The asset address
     /// @return The max deposit amount
-    function maxDeposit(address token) public view returns (uint256) {
-        uint256 cap = depositCap[token];
+    function maxDeposit(address _asset) public view returns (uint256) {
+        uint256 cap = depositCap[_asset];
         if (cap == type(uint256).max) {
             return cap;
         }
 
-        uint256 totalDeposits = totalDeposited[token];
+        uint256 totalDeposits = totalDeposited[_asset];
         if (totalDeposits >= cap) {
             return 0;
         }
@@ -217,22 +227,25 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
 
     /// @notice Sets the deposit cap for a specific asset
     /// @dev Can only be called by the governance
-    /// @param token The token address
-    /// @param cap The new deposit cap
-    function setDepositCap(address token, uint256 cap) external onlyGovernance {
-        depositCap[token] = cap;
-        emit DepositCapSet(token, cap);
+    /// @param _asset The asset address
+    /// @param _cap The new deposit cap
+    function setDepositCap(
+        address _asset,
+        uint256 _cap
+    ) external onlyGovernance {
+        depositCap[_asset] = _cap;
+        emit DepositCapSet(_asset, _cap);
     }
 
     /// @notice Sets the vault for a specific asset
     /// @dev Can only be called by the governance to override the vault
-    /// @param asset The token address
-    /// @param vault The corresponding Pre-Deposit vault address
-    function setVault(address asset, address vault) external onlyGovernance {
-        require(asset != address(0), "ZERO_ADDRESS");
+    /// @param _asset The asset address
+    /// @param _vault The corresponding Pre-Deposit vault address
+    function setVault(address _asset, address _vault) external onlyGovernance {
+        require(_asset != address(0), "ZERO_ADDRESS");
 
-        preDepositVault[asset] = vault;
-        emit VaultSet(asset, vault);
+        preDepositVault[_asset] = _vault;
+        emit VaultSet(_asset, _vault);
     }
 
     /// @notice Sets the Across bridge
@@ -257,25 +270,25 @@ contract DepositRelayer is Governance2Step, IAccrossMessageReceiver {
 
     /// @notice Notify relayer of new vault
     /// @dev Can only be called by the vault factory
-    /// @param token The token address
-    /// @param vault The corresponding Pre-Deposit vault address
-    /// @param stbStrategy The corresponding STB depositor strategy address
+    /// @param _asset The asset address
+    /// @param _vault The corresponding Pre-Deposit vault address
+    /// @param _stbStrategy The corresponding STB depositor strategy address
     function newVault(
-        address token,
-        address vault,
-        address stbStrategy
+        address _asset,
+        address _vault,
+        address _stbStrategy
     ) external onlyVaultFactory {
-        require(token != address(0), "ZERO_ADDRESS");
+        require(_asset != address(0), "ZERO_ADDRESS");
 
-        preDepositVault[token] = vault;
-        stbDepositor[token] = stbStrategy;
-        depositCap[token] = type(uint256).max;
+        preDepositVault[_asset] = _vault;
+        stbDepositor[_asset] = _stbStrategy;
+        depositCap[_asset] = type(uint256).max;
     }
 
-    function rescue(address token) external onlyGovernance {
-        ERC20(token).safeTransfer(
+    function rescue(address _token) external onlyGovernance {
+        ERC20(_token).safeTransfer(
             msg.sender,
-            ERC20(token).balanceOf(address(this))
+            ERC20(_token).balanceOf(address(this))
         );
     }
 }

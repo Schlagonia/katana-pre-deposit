@@ -23,7 +23,11 @@ contract ShareReceiver {
         DEPOSIT_RELAYER = msg.sender;
     }
 
-    function pullShares(address token, uint256 amount) external onlyGovernance {
-        ERC20(token).safeTransfer(msg.sender, amount);
+    function pullShares(
+        address _token,
+        uint256 _amount,
+        address _to
+    ) external onlyGovernance {
+        ERC20(_token).safeTransfer(_to, _amount);
     }
 }
