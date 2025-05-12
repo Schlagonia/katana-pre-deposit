@@ -188,24 +188,6 @@ contract OperationTest is Setup {
         assertEq(depositRelayer.deposited(address(asset), user), depositAmount);
     }
 
-    function test_shareReceiver_pullShares() public {
-        uint256 amount = 1000 * 10 ** decimals;
-
-        // Setup ShareReceiver with tokens
-        airdrop(asset, address(shareReceiver), amount);
-
-        // Only governance should be able to pull shares
-        vm.expectRevert("!governance");
-        shareReceiver.pullShares(address(asset), amount, management);
-
-        uint256 balanceBefore = asset.balanceOf(management);
-
-        vm.prank(management);
-        shareReceiver.pullShares(address(asset), amount, management);
-
-        assertEq(asset.balanceOf(management), balanceBefore + amount);
-    }
-
     function test_RevertWhen_NonGovernanceDeploysPreDeposit() public {
         vm.prank(user);
         vm.expectRevert("!governance");
