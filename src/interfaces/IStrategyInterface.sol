@@ -5,7 +5,7 @@ import {IBase4626Compounder} from "@periphery/Bases/4626Compounder/IBase4626Comp
 import {IStrategy} from "@tokenized-strategy/interfaces/IStrategy.sol";
 
 interface IStrategyInterface is IStrategy {
-    function bridgeFunds() external;
+    function bridgeFunds(uint256 _amount) external;
 
     function setKatanaReceiver(address _katanaReceiver) external;
 

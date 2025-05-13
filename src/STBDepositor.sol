@@ -32,13 +32,20 @@ contract STBDepositor is Base4626Compounder {
         PRE_DEPOSIT_FACTORY = PreDepositFactory(msg.sender);
     }
 
-    function bridgeFunds() external onlyManagement {
+    function bridgeFunds(uint256 _amount) external onlyManagement {
         require(katanaReceiver != address(0), "KATANA RECEIVER NOT SET");
         uint256 assetBalance = balanceOfAsset();
         if (assetBalance > 0) {
             _deployFunds(assetBalance);
         }
+
+        // Use min of amount or shares
         uint256 shares = balanceOfVault();
+        if (_amount < shares) {
+            shares = _amount;
+        }
+
+        require(shares > 0, "!shares");
 
         ERC20(address(vault)).forceApprove(address(ZKEVM_BRIDGE), shares);
 
