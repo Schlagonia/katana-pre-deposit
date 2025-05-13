@@ -85,12 +85,79 @@ contract BridgeTest is Setup {
         );
         // Bridge the funds
         vm.prank(management);
-        strategy.bridgeFunds();
+        strategy.bridgeFunds(vaultSharesBefore);
 
         // Verify STBDepositor no longer holds any vault shares
         assertEq(
             ERC20(address(stbVault)).balanceOf(address(strategy)),
             0,
+            "!shares bridged"
+        );
+    }
+
+    function test_partialBridgeFlow(uint256 _amount) public {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        // ======= Step 1: Initial deposit into preDepositVault through depositRelayer =======
+        airdrop(asset, user, _amount);
+
+        vm.startPrank(user);
+        asset.approve(address(depositRelayer), _amount);
+        depositRelayer.deposit(address(asset), _amount);
+        vm.stopPrank();
+
+        // Verify initial deposit
+        assertEq(preDepositVault.totalAssets(), _amount, "!totalAssets");
+        assertEq(
+            preDepositVault.balanceOf(address(shareReceiver)),
+            _amount,
+            "!shareReceiver balance"
+        );
+
+        // ======= Step 2: Move all funds to STBDepositor strategy =======
+
+        // Then, move all funds to STBDepositor
+        vm.prank(chad);
+        preDepositVault.update_debt(address(strategy), _amount);
+
+        // Verify funds moved to STBDepositor
+        assertApproxEqAbs(
+            preDepositVault.strategies(address(strategy)).current_debt,
+            _amount,
+            1,
+            "!stbDepositor debt"
+        );
+
+        // ======= Step 3: Bridge funds using STBDepositor =======
+        // Store balances before bridge
+        uint256 vaultSharesBefore = ERC20(address(stbVault)).balanceOf(
+            address(strategy)
+        );
+
+        uint256 sharesToBridge = vaultSharesBefore / 2;
+
+        bytes memory metadata = IPolygonZkEVMBridge(ZKEVM_BRIDGE)
+            .getTokenMetadata(address(stbVault));
+        uint256 depositCount = IPolygonZkEVMBridge(ZKEVM_BRIDGE).depositCount();
+        vm.expectEmit(true, true, true, true, address(ZKEVM_BRIDGE));
+        emit BridgeEvent(
+            0,
+            uint32(0),
+            address(stbVault),
+            uint32(targetNetworkId),
+            KATANA_RECEIVER,
+            sharesToBridge,
+            metadata,
+            uint32(depositCount)
+        );
+        // Bridge the funds
+        vm.prank(management);
+        strategy.bridgeFunds(sharesToBridge);
+
+        // Verify STBDepositor no longer holds any vault shares
+        assertEq(
+            ERC20(address(stbVault)).balanceOf(address(strategy)),
+            _amount - sharesToBridge,
             "!shares bridged"
         );
     }
@@ -136,26 +203,24 @@ contract BridgeTest is Setup {
         // Try to bridge without Katana receiver set
         vm.prank(management);
         vm.expectRevert("KATANA RECEIVER NOT SET");
-        strategy.bridgeFunds();
+        strategy.bridgeFunds(amount);
     }
 
     function test_RevertWhen_NonManagementBridges() public {
         vm.prank(user);
         vm.expectRevert("!management");
-        strategy.bridgeFunds();
+        strategy.bridgeFunds(0);
     }
 
-    function test_bridge_zeroAmount() public {
+    function test_RevertWhen_Bridge_zeroAmount() public {
         // Set Katana receiver
         vm.prank(management);
         strategy.setKatanaReceiver(KATANA_RECEIVER);
 
         // Try to bridge with no funds
         vm.prank(management);
-        strategy.bridgeFunds();
-
-        // Should execute without revert but do nothing
-        assertEq(ERC20(address(stbVault)).balanceOf(address(strategy)), 0);
+        vm.expectRevert("!shares");
+        strategy.bridgeFunds(0);
     }
 
     function test_setKatanaReceiver() public {
