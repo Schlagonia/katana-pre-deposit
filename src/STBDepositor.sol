@@ -26,10 +26,11 @@ contract STBDepositor is Base4626Compounder {
         address _asset,
         string memory _name,
         address _vault,
-        address _preDepositVault
+        address _preDepositVault,
+        address _preDepositFactory
     ) Base4626Compounder(_asset, _name, _vault) {
         PRE_DEPOSIT_VAULT = _preDepositVault;
-        PRE_DEPOSIT_FACTORY = PreDepositFactory(msg.sender);
+        PRE_DEPOSIT_FACTORY = PreDepositFactory(_preDepositFactory);
     }
 
     function bridgeFunds(uint256 _amount) external onlyManagement {

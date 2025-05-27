@@ -171,7 +171,8 @@ contract BridgeTest is Setup {
                     address(asset),
                     "STB Depositor",
                     address(stbVault),
-                    address(preDepositVault)
+                    address(preDepositVault),
+                    address(preDepositFactory)
                 )
             )
         );
