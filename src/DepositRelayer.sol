@@ -55,6 +55,7 @@ contract DepositRelayer is Governance2Step, IAcrossMessageReceiver {
     address public relayLinkBridge;
 
     /// @notice asset to stb depositor strategy for any deployed vaults
+    /// @dev Prefer to use `vault.get_default_queue()` to get the current STB depositor strategy
     mapping(address => address) public stbDepositor;
 
     /// @notice asset to vault mapping for any deployed vaults

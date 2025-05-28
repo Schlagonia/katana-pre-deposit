@@ -100,7 +100,8 @@ contract PreDepositFactory {
                         )
                     ),
                     _stbVault,
-                    _vault
+                    _vault,
+                    address(this)
                 )
             )
         );

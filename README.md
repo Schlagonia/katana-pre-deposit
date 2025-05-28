@@ -2,6 +2,8 @@
 
 ![alt text](image.png)
 
+NOTE: The live versions `stbDepositor` mapping will not necessarily be accurate in the Deposit Relayer. Retrieve the current vault strategies using `vault.get_default_queue()`
+
 ## How to start
 
 ### Requirements
