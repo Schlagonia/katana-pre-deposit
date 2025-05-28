@@ -80,7 +80,7 @@ contract Deploy is Script {
         IStrategyInterface _stbDepositor = IStrategyInterface(stbDepositor);
         _stbDepositor.setPendingManagement(governance);
         _stbDepositor.setPerformanceFeeRecipient(governance);
-        _stbDepositor.setKeeper(governance);
+        _stbDepositor.setKeeper(sms);
         _stbDepositor.setEmergencyAdmin(sms);
     }
 }
