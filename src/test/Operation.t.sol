@@ -4,6 +4,8 @@ pragma solidity ^0.8.18;
 import "forge-std/console2.sol";
 import {Setup, ERC20, IStrategyInterface, IVault} from "./utils/Setup.sol";
 
+import {AgoraStrategy} from "../AgoraStrategy.sol";
+
 contract OperationTest is Setup {
     event PreDepositDeployed(address indexed asset, address indexed vault);
     event VaultSet(address indexed asset, address indexed vault);
@@ -689,5 +691,62 @@ contract OperationTest is Setup {
             originChainId,
             address(0)
         );
+    }
+
+    function test_AgoraStrategy() public {
+        address fundManager = address(0x123);
+        uint256 amount = 1000e18;
+        address preDepositVault = address(0x456);
+        AgoraStrategy agoraStrategy = new AgoraStrategy(
+            address(asset),
+            fundManager,
+            preDepositVault
+        );
+
+        assertEq(
+            asset.allowance(address(agoraStrategy), address(fundManager)),
+            type(uint256).max
+        );
+
+        IStrategyInterface strategy = IStrategyInterface(
+            address(agoraStrategy)
+        );
+
+        airdrop(asset, address(preDepositVault), amount);
+
+        assertEq(strategy.maxDeposit(address(this)), 0);
+        assertEq(strategy.maxDeposit(address(fundManager)), 0);
+        assertEq(
+            strategy.maxDeposit(address(preDepositVault)),
+            type(uint256).max
+        );
+
+        vm.prank(preDepositVault);
+        asset.approve(address(agoraStrategy), amount);
+
+        vm.prank(preDepositVault);
+        strategy.deposit(amount, preDepositVault);
+
+        assertEq(asset.balanceOf(address(agoraStrategy)), amount);
+        assertEq(asset.balanceOf(address(preDepositVault)), 0);
+
+        assertEq(strategy.maxDeposit(address(this)), 0);
+        assertEq(strategy.maxDeposit(address(fundManager)), 0);
+        assertEq(
+            strategy.maxDeposit(address(preDepositVault)),
+            type(uint256).max
+        );
+
+        uint256 balanceBefore = asset.balanceOf(address(fundManager));
+
+        vm.prank(fundManager);
+        asset.transferFrom(
+            address(agoraStrategy),
+            address(fundManager),
+            amount
+        );
+
+        assertEq(asset.balanceOf(address(fundManager)), balanceBefore + amount);
+        assertEq(asset.balanceOf(address(agoraStrategy)), 0);
     }
 }
