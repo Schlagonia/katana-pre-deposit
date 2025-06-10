@@ -49,8 +49,6 @@ contract Setup is ExtendedTest, IEvents {
 
     address public relayLinkBridge = 0xeeeeee9eC4769A09a76A83C7bC42b185872860eE;
 
-    address public katanaReceiver;
-
     IVault public stbVault;
 
     IVault public yearnVault;
