@@ -713,7 +713,7 @@ contract OperationTest is Setup {
         depositModule.setDepositCap(address(usdcVault), cap);
 
         assertEq(usdcVault.maxDeposit(receiver), 0);
-        assertEq(usdcVault.maxDeposit(user), cap);
+        assertEq(usdcVault.maxDeposit(user), cap - usdcVault.totalAssets());
 
         ERC20 usdc = ERC20(usdcVault.asset());
 

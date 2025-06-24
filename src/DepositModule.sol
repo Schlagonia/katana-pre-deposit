@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {Governance} from "@periphery/utils/Governance.sol";
+import {IVault} from "@yearn-vaults/interfaces/IVault.sol";
 
 contract DepositModule is Governance {
     address public immutable SHARE_RECEIVER;
@@ -28,6 +29,9 @@ contract DepositModule is Governance {
         if (_receiver == SHARE_RECEIVER) {
             return 0;
         }
-        return depositCap[msg.sender];
+
+        uint256 cap = depositCap[msg.sender];
+        uint256 assets = IVault(msg.sender).totalAssets();
+        return assets >= cap ? 0 : cap - assets;
     }
 }
