@@ -695,17 +695,25 @@ contract OperationTest is Setup {
 
     function test_depositModule() public {
         address receiver = 0x836304B832687f3811a0dF935934C724B40578eB;
-        DepositModule depositModule = new DepositModule(address(receiver));
-
         address sms = 0x16388463d60FFE0661Cf7F1f31a7D658aC790ff7;
-        depositRelayer = DepositRelayer(0xB01dADEC98308528ee57A17b24A473213c1704bb);
-        
+        DepositModule depositModule = new DepositModule(sms, address(receiver));
+
+        depositRelayer = DepositRelayer(
+            0xB01dADEC98308528ee57A17b24A473213c1704bb
+        );
+
         IVault usdcVault = IVault(0x7B5A0182E400b241b317e781a4e9dEdFc1429822);
+
+        uint256 cap = usdcVault.deposit_limit();
 
         vm.prank(sms);
         usdcVault.set_deposit_limit_module(address(depositModule), true);
 
+        vm.prank(sms);
+        depositModule.setDepositCap(address(usdcVault), cap);
+
         assertEq(usdcVault.maxDeposit(receiver), 0);
+        assertEq(usdcVault.maxDeposit(user), cap);
 
         ERC20 usdc = ERC20(usdcVault.asset());
 
