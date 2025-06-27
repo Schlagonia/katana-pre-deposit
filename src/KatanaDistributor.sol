@@ -1,25 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-pragma solidity ^0.8.23;
+pragma solidity ^0.8.18;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import {Governance} from "@periphery/utils/Governance.sol";
 
-contract RewardsDistributor is Governance {
+/// @title KatanaDistributor
+/// @notice Claim from merkle tree either directly on L2 or through L1 claimer.
+contract KatanaDistributor is Governance {
     using SafeERC20 for ERC20;
 
-    /// STORAGE ///
+    /// @notice The address of the ZKEVM bridge.
     address public constant ZKEVM_BRIDGE =
         0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe;
 
+    /// @notice The address of the vault this claimer distributes.
     address public immutable VAULT;
 
+    /// @notice The address of the L1 claimer.
     address public immutable L1_CLAIMER;
 
-    bytes32 public currentRoot; // The merkle tree's root of the current rewards distribution.
+    /// @notice The merkle tree's root of the current rewards distribution.
+    bytes32 public currentRoot;
 
-    mapping(address => bool) public claimed; // The rewards already claimed. account -> amount.
+    /// @notice If rewards have already been claimed.
+    mapping(address => bool) public claimed;
 
     /// EVENTS ///
 
@@ -45,14 +51,6 @@ contract RewardsDistributor is Governance {
         address indexed recipient,
         uint256 amount
     );
-
-    /// ERRORS ///
-
-    /// @notice Thrown when the proof is invalid or expired.
-    error ProofInvalidOrExpired();
-
-    /// @notice Thrown when the claimer has already claimed the rewards.
-    error AlreadyClaimed();
 
     /// CONSTRUCTOR ///
 
@@ -88,6 +86,7 @@ contract RewardsDistributor is Governance {
         emit Withdrawn(_token, _to, toWithdraw);
     }
 
+    /// @notice Handles the message received from the ZKEVM bridge.
     function onMessageReceived(
         address originAddress,
         uint32 originNetwork,
@@ -108,10 +107,17 @@ contract RewardsDistributor is Governance {
         _claim(_account, _amount, _recipient, _proof);
     }
 
+    /// @notice Claims rewards to self.
+    /// @param _amount The overall claimable amount of token rewards.
+    /// @param _proof The merkle proof that validates this claim.
     function claim(uint256 _amount, bytes32[] memory _proof) external {
         _claim(msg.sender, _amount, msg.sender, _proof);
     }
 
+    /// @notice Claims rewards to a recipient.
+    /// @param _amount The overall claimable amount of token rewards.
+    /// @param _recipient The address of the recipient.
+    /// @param _proof The merkle proof that validates this claim.
     function claim(
         uint256 _amount,
         address _recipient,
@@ -120,25 +126,23 @@ contract RewardsDistributor is Governance {
         _claim(msg.sender, _amount, _recipient, _proof);
     }
 
-    /// @notice Claims rewards.
-    /// @param _account The address of the claimer.
-    /// @param _amount The overall claimable amount of token rewards.
-    /// @param _proof The merkle proof that validates this claim.
+    /// @notice Internal function to claim rewards.
     function _claim(
         address _account,
         uint256 _amount,
         address _recipient,
         bytes32[] memory _proof
     ) internal {
-        if (claimed[_account]) revert AlreadyClaimed();
+        require(!claimed[_account], "Already claimed");
 
-        if (
-            !MerkleProof.verify(
+        require(
+            MerkleProof.verify(
                 _proof,
                 currentRoot,
                 keccak256(abi.encodePacked(_account, _amount))
-            )
-        ) revert ProofInvalidOrExpired();
+            ),
+            "Invalid proof"
+        );
 
         claimed[_account] = true;
 
