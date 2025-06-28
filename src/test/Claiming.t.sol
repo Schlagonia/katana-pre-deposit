@@ -84,8 +84,8 @@ contract ClaimingTest is Setup {
 
         // Create valid Merkle tree
         // Leaf hashes: keccak256(abi.encodePacked(account, amount))
-        leaf1 = keccak256(abi.encodePacked(user, amount1));
-        leaf2 = keccak256(abi.encodePacked(user2, amount2));
+        leaf1 = keccak256(bytes.concat(keccak256(abi.encode(user, amount1))));
+        leaf2 = keccak256(bytes.concat(keccak256(abi.encode(user2, amount2))));
 
         // Root: keccak256(abi.encodePacked(leaf1, leaf2))
         bytes32 a = leaf1 > leaf2 ? leaf2 : leaf1;

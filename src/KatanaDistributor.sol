@@ -135,14 +135,11 @@ contract KatanaDistributor is Governance {
     ) internal {
         require(!claimed[_account], "Already claimed");
 
-        require(
-            MerkleProof.verify(
-                _proof,
-                currentRoot,
-                keccak256(abi.encodePacked(_account, _amount))
-            ),
-            "Invalid proof"
+        bytes32 leaf = keccak256(
+            bytes.concat(keccak256(abi.encode(_account, _amount)))
         );
+
+        require(MerkleProof.verify(_proof, currentRoot, leaf), "Invalid proof");
 
         claimed[_account] = true;
 
