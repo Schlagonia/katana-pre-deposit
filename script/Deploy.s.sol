@@ -21,47 +21,51 @@ contract Deploy is Script {
     address public asset;
     address public vbVault;
     address public preDepositVault;
-
-    address public preDepositFactory = 0x9d770717d63e32089B2E11E4Ce927C1dCe8A023d;
+    address public yearnVault;
 
     function run() public {
         vm.startBroadcast();
 
+        PreDepositFactory preDepositFactory = new PreDepositFactory(deployer, acrossBridge, relayLinkBridge, roleManager);
+        DepositRelayer depositRelayer = preDepositFactory.DEPOSIT_RELAYER();
+        console.log("preDepositFactory deployed to:", address(preDepositFactory));
+
         // USDC
         asset = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
         vbVault = 0x53E82ABbb12638F09d9e624578ccB666217a765e;
-        preDepositVault = 0x7B5A0182E400b241b317e781a4e9dEdFc1429822;
+        yearnVault = 0xBe53A109B494E5c9f97b9Cd39Fe969BE68BF6204;
 
-        STBDepositor usdcSTBDepositor = new STBDepositor(asset, name(asset), vbVault, preDepositVault, preDepositFactory);
-        console.log(IStrategyInterface(address(usdcSTBDepositor)).name(), " deployed to:", address(usdcSTBDepositor));
-        setAddresses(address(usdcSTBDepositor));
+        address usdcPreDepositVault = preDepositFactory.deployPreDeposit(asset, yearnVault, vbVault);   
+        depositRelayer.setDepositCap(asset, 0);
+        console.log("usdcPreDepositVault deployed to:", usdcPreDepositVault);
 
         // USDT
         asset = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
         vbVault = 0x6d4f9f9f8f0155509ecd6Ac6c544fF27999845CC;
-        preDepositVault = 0x48c03B6FfD0008460F8657Db1037C7e09dEedfcb;
+        yearnVault = 0x310B7Ea7475A0B449Cfd73bE81522F1B88eFAFaa;
 
-        STBDepositor usdtSTBDepositor = new STBDepositor(asset, name(asset), vbVault, preDepositVault, preDepositFactory);
-        console.log(IStrategyInterface(address(usdtSTBDepositor)).name(), " deployed to:", address(usdtSTBDepositor));
-        setAddresses(address(usdtSTBDepositor));
+        address usdtPreDepositVault = preDepositFactory.deployPreDeposit(asset, yearnVault, vbVault);
+        depositRelayer.setDepositCap(asset, 0);
+        console.log("usdtPreDepositVault deployed to:", usdtPreDepositVault);
 
         // WBTC
         asset = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
         vbVault = 0x2C24B57e2CCd1f273045Af6A5f632504C432374F;
-        preDepositVault = 0x92C82f5F771F6A44CfA09357DD0575B81BF5F728;
+        yearnVault = 0x751F0cC6115410A3eE9eC92d08f46Ff6Da98b708;
 
-        STBDepositor wbtcSTBDepositor = new STBDepositor(asset, name(asset), vbVault, preDepositVault, preDepositFactory);
-        console.log(IStrategyInterface(address(wbtcSTBDepositor)).name(), " deployed to:", address(wbtcSTBDepositor));
-        setAddresses(address(wbtcSTBDepositor));
+        address wbtcPreDepositVault = preDepositFactory.deployPreDeposit(asset, yearnVault, vbVault);
+        depositRelayer.setDepositCap(asset, 0);
+        console.log("wbtcPreDepositVault deployed to:", wbtcPreDepositVault);
 
         // weth
         asset = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
         vbVault = 0x2DC70fb75b88d2eB4715bc06E1595E6D97c34DFF;
-        preDepositVault = 0xcc6a16Be713f6a714f68b0E1f4914fD3db15fBeF;
+        yearnVault = 0xc56413869c6CDf96496f2b1eF801fEDBdFA7dDB0;
+        address wethPreDepositVault = preDepositFactory.deployPreDeposit(asset, yearnVault, vbVault);
+        depositRelayer.setDepositCap(asset, 0);
+        console.log("wethPreDepositVault deployed to:", wethPreDepositVault);
 
-        STBDepositor wethSTBDepositor = new STBDepositor(asset, name(asset), vbVault, preDepositVault, preDepositFactory);
-        console.log(IStrategyInterface(address(wethSTBDepositor)).name(), " deployed to:", address(wethSTBDepositor));
-        setAddresses(address(wethSTBDepositor));
+        depositRelayer.transferGovernance(governance);
 
         vm.stopBroadcast();
     }
@@ -76,11 +80,4 @@ contract Deploy is Script {
         );
     }
 
-    function setAddresses(address stbDepositor) public {
-        IStrategyInterface _stbDepositor = IStrategyInterface(stbDepositor);
-        _stbDepositor.setPendingManagement(governance);
-        _stbDepositor.setPerformanceFeeRecipient(governance);
-        _stbDepositor.setKeeper(sms);
-        _stbDepositor.setEmergencyAdmin(sms);
-    }
 }

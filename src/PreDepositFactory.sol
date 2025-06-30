@@ -14,6 +14,12 @@ import {Roles} from "@yearn-vaults/interfaces/Roles.sol";
 
 import {IStrategyInterface} from "./interfaces/IStrategyInterface.sol";
 
+interface IRoleManager {
+    function getBrainRoles() external view returns (uint256);
+    function getDebtAllocatorRoles() external view returns (uint256);
+    function getDebtAllocator() external view returns (address);
+}
+
 /// @title Pre-Deposit Factory
 /// @notice This contract is used to deploy new pre-deposit vaults
 /// @dev Can only be called by the governance
@@ -32,6 +38,10 @@ contract PreDepositFactory {
     /// @notice Global v3.0.4 vault factory
     IVaultFactory public constant VAULT_FACTORY =
         IVaultFactory(0x770D0d1Fb036483Ed4AbB6d53c1C88fb277D812F);
+
+    address public constant BRAIN = 0x16388463d60FFE0661Cf7F1f31a7D658aC790ff7;
+
+    address public constant CHAD = 0xFEB4acf3df3cDEA7399794D0869ef76A6EfAff52;
 
     /// @notice Address to give the Role Manager position to.
     address public immutable ROLE_MANAGER;
@@ -106,10 +116,9 @@ contract PreDepositFactory {
             )
         );
 
-        address _governance = DEPOSIT_RELAYER.governance();
-        _stbDepositor.setPendingManagement(_governance);
-        _stbDepositor.setPerformanceFeeRecipient(_governance);
-        _stbDepositor.setKeeper(_governance);
+        _stbDepositor.setPendingManagement(CHAD);
+        _stbDepositor.setPerformanceFeeRecipient(CHAD);
+        _stbDepositor.setKeeper(CHAD);
 
         // Add strategies to vault
         IVault(_vault).set_role(address(this), Roles.ALL);
@@ -128,6 +137,16 @@ contract PreDepositFactory {
 
         IVault(_vault).set_accountant(address(ACCOUNTANT));
         IVault(_vault).set_deposit_limit(type(uint256).max);
+
+        // Give roles to Brain and Debt allocator
+        IVault(_vault).set_role(
+            BRAIN,
+            IRoleManager(ROLE_MANAGER).getBrainRoles()
+        );
+        IVault(_vault).set_role(
+            IRoleManager(ROLE_MANAGER).getDebtAllocator(),
+            IRoleManager(ROLE_MANAGER).getDebtAllocatorRoles()
+        );
 
         IVault(_vault).set_role(address(this), 0);
         IVault(_vault).transfer_role_manager(ROLE_MANAGER);
