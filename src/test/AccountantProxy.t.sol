@@ -215,13 +215,6 @@ contract AccountantProxyTest is Setup {
         );
     }
 
-    function test_receiveReverts() public {
-        // Test that the contract reverts on ETH transfers
-        vm.deal(address(this), 1 ether);
-        vm.expectRevert("No ETH accepted");
-        payable(address(accountantProxy)).transfer(1 ether);
-    }
-
     function test_reportOnSelf_withFuzzedAmount(uint256 _amount) public {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 

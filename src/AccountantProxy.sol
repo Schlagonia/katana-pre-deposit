@@ -112,47 +112,19 @@ contract AccountantProxy is Governance {
      * @notice Fallback function to forward all other calls to the accountant
      * @dev Validates permissions based on function selector before forwarding
      */
-    fallback() external payable {
+    fallback() external {
         _checkGovernance();
 
-        address _accountant = ACCOUNTANT;
+        (bool success, bytes memory result) = ACCOUNTANT.call(msg.data);
 
-        assembly {
-            // Copy calldata to memory
-            let ptr := mload(0x40)
-            calldatacopy(ptr, 0, calldatasize())
-
-            // Forward call to accountant
-            let result := call(
-                gas(),
-                _accountant,
-                callvalue(),
-                ptr,
-                calldatasize(),
-                0,
-                0
-            )
-
-            // Copy return data
-            let size := returndatasize()
-            returndatacopy(ptr, 0, size)
-
-            // Return or revert based on result
-            switch result
-            case 0 {
-                revert(ptr, size)
+        if (success) {
+            assembly {
+                return(add(result, 0x20), mload(result))
             }
-            default {
-                return(ptr, size)
+        } else {
+            assembly {
+                revert(add(result, 0x20), mload(result))
             }
         }
-    }
-
-    /**
-     * @notice Receive function to handle plain ETH transfers
-     * @dev Reverts as this contract should not hold ETH
-     */
-    receive() external payable {
-        revert("No ETH accepted");
     }
 }
