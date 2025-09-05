@@ -73,9 +73,9 @@ contract AccountantProxy is Governance {
 
         // Post-report sanity checks
         require(gain == expectedGain, "gain mismatch");
-        // Verify PPS hasn't increased (allowing for rounding)
+        // Verify PPS hasn't increased
         require(IVault(vault).pricePerShare() == prePPS, "PPS changed");
-        // Account for fees reducing the idle increase
+        // Total idle should have increased by the expected gain
         require(
             IVault(vault).totalIdle() == preTotalIdle + expectedGain,
             "Idle update incorrect"

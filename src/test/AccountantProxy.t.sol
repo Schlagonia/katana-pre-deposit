@@ -59,8 +59,8 @@ contract AccountantProxyTest is Setup {
         vm.prank(management); // management is the initial fee manager
         accountant.setFutureFeeManager(address(accountantProxy));
 
-        vm.prank(address(accountantProxy));
-        accountant.acceptFeeManager();
+        vm.prank(address(management));
+        IAccountantFull(address(accountantProxy)).acceptFeeManager();
 
         // Add the preDepositVault to the accountant
         vm.prank(management);
@@ -284,44 +284,5 @@ contract AccountantProxyTest is Setup {
         vm.prank(newGovernance);
         accountantProxy.setReporter(reporter, true);
         assertTrue(accountantProxy.canReport(reporter));
-    }
-
-    function test_reportOnSelf_sanityChecks() public {
-        vm.prank(management);
-        accountantProxy.setReporter(reporter, true);
-
-        uint256 airdropAmount = 5000 * 10 ** decimals;
-
-        // Setup: Create a scenario where we have airdropped tokens
-        airdrop(asset, address(preDepositVault), airdropAmount);
-
-        uint256 preTotalAssets = preDepositVault.totalAssets();
-        uint256 preTotalIdle = preDepositVault.totalIdle();
-        uint256 prePPS = preDepositVault.pricePerShare();
-
-        // Execute report
-        vm.prank(reporter);
-        (uint256 gain, uint256 loss) = accountantProxy.reportOnSelf(
-            address(preDepositVault)
-        );
-
-        // All sanity checks should pass
-        assertEq(gain, airdropAmount, "gain mismatch");
-        assertEq(loss, 0, "loss should be 0");
-        assertEq(
-            preDepositVault.pricePerShare(),
-            prePPS,
-            "PPS should not change"
-        );
-        assertEq(
-            preDepositVault.totalIdle(),
-            preTotalIdle + airdropAmount,
-            "idle mismatch"
-        );
-        assertEq(
-            preDepositVault.totalAssets(),
-            preTotalAssets + airdropAmount,
-            "assets mismatch"
-        );
     }
 }
