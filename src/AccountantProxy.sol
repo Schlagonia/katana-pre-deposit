@@ -27,7 +27,10 @@ contract AccountantProxy is Governance {
     mapping(address => bool) public canReport;
 
     modifier onlyReporter() {
-        require(canReport[msg.sender] || msg.sender == governance, "!authorized");
+        require(
+            canReport[msg.sender] || msg.sender == governance,
+            "!authorized"
+        );
         _;
     }
 
