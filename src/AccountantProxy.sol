@@ -5,7 +5,16 @@ import {Governance} from "@periphery/utils/Governance.sol";
 import {IVault} from "@yearn-vaults/interfaces/IVault.sol";
 
 interface IAccountant {
-    function turnOffHealthCheck(address vault, address strategy) external;
+    function setCustomConfig(
+        address vault,
+        uint16 customManagement,
+        uint16 customPerformance,
+        uint16 customRefund,
+        uint16 customMaxFee,
+        uint16 customMaxGain,
+        uint16 customMaxLoss
+    ) external;
+    function removeCustomConfig(address vault) external;
 }
 
 interface IERC20 {
@@ -69,10 +78,12 @@ contract AccountantProxy is Governance {
         require(expectedGain > 0, "no gain");
 
         // Turn off health check for self-reporting
-        IAccountant(ACCOUNTANT).turnOffHealthCheck(vault, vault);
+        IAccountant(ACCOUNTANT).setCustomConfig(vault, 0, 0, 0, 0, 0, 0);
 
         // Trigger the vault to report on itself
         (gain, loss) = IVault(vault).process_report(vault);
+
+        IAccountant(ACCOUNTANT).removeCustomConfig(vault);
 
         // Post-report sanity checks
         require(gain == expectedGain, "gain mismatch");
