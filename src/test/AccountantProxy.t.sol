@@ -135,6 +135,7 @@ contract AccountantProxyTest is Setup {
         uint256 initialTotalAssets = preDepositVault.totalAssets();
         uint256 initialTotalIdle = preDepositVault.totalIdle();
         uint256 initialPPS = preDepositVault.pricePerShare();
+        uint256 initialFees = preDepositVault.balanceOf(address(accountant));
 
         // Report on self
         vm.prank(reporter);
@@ -159,6 +160,11 @@ contract AccountantProxyTest is Setup {
             preDepositVault.totalAssets(),
             initialTotalAssets + airdropAmount,
             "totalAssets should increase by gain"
+        );
+        assertEq(
+            preDepositVault.balanceOf(address(accountant)),
+            initialFees,
+            "accountant balance should not change"
         );
     }
 
